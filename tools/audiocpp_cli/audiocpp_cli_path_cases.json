@@ -1257,7 +1257,7 @@
     },
     {
       "id": "vibevoice_two_speaker_long",
-      "coverage": "VibeVoice 1.5B long two-speaker TTS with reference voices",
+      "coverage": "VibeVoice 1.5B short two-speaker TTS smoke path with reference voices",
       "family": "vibevoice",
       "model": "models/VibeVoice-1.5B",
       "task": "tts",
@@ -1267,9 +1267,9 @@
       ],
       "requests": [
         {
-          "id": "long_two_speaker_research_vessel",
-          "text": "Speaker 1: When the overnight rain finally stopped, the research vessel was already easing away from the pier. I kept one hand on the rail and watched the city shrink behind us, because the whole morning felt like a test of patience: the weather station was late, the tide report had two conflicting numbers, and half the crew wanted to wait for clearer skies. But the acoustic buoys were drifting out of range, and if we missed this window we would lose the cleanest recording week of the season.\nSpeaker 2: I remember that departure differently. From the engine room it sounded less dramatic and more like a checklist finally doing its job. The generators were stable, the satellite link came up on the second attempt, and the spare hydrophone array passed its self test after I reseated one stubborn connector. What mattered to me was not whether the sky looked friendly, but whether every system could keep running once the waves started pushing against us.\nSpeaker 1: By noon the fog lifted enough to reveal a line of gulls circling over the shoals, and the first buoy came into view. We cut the engines, lowered the deck noise, and listened. There was a low mechanical hum from somewhere far north, a pattern of clicks that might have been dolphins, and beneath it all a slow pulse from the mooring chain. It was not a clean recording yet, but it was alive in the way field data always is: messy, specific, and stubbornly real.\nSpeaker 2: That is why I like this test case. It has narration, technical phrasing, turn taking, and enough duration to expose whether the model can hold two voices without collapsing into a short greeting. If the output sounds natural, we know the path is exercising actual long-form synthesis instead of merely proving that a checkpoint can make a few seconds of noise.",
-          "num_inference_steps": 20,
+          "id": "short_two_speaker_smoke",
+          "text": "Speaker 1: Hi Frank. The first buoy is online, and the harbor link is clean.\nSpeaker 2: Great. I hear you clearly, and my voice should stay separate.",
+          "num_inference_steps": 8,
           "guidance_scale": 1.3,
           "seed": 1234,
           "options": {

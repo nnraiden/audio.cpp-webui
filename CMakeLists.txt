@@ -212,6 +212,17 @@ add_library(engine_runtime STATIC
     src/models/voxcpm2/minicpm.cpp
     src/models/voxcpm2/session.cpp
     src/models/voxcpm2/tokenizer_text.cpp
+    src/models/vibevoice/assets.cpp
+    src/models/vibevoice/connector.cpp
+    src/models/vibevoice/decoder.cpp
+    src/models/vibevoice/diffusion_head.cpp
+    src/models/vibevoice/diffusion_sampler.cpp
+    src/models/vibevoice/generator.cpp
+    src/models/vibevoice/loader.cpp
+    src/models/vibevoice/scheduler.cpp
+    src/models/vibevoice/session.cpp
+    src/models/vibevoice/tokenizer_audio.cpp
+    src/models/vibevoice/tokenizer_text.cpp
     src/models/qwen3_tts/assets.cpp
     src/models/qwen3_tts/tokenizer_text.cpp
     src/models/qwen3_tts/tokenizer_speech_encoder.cpp

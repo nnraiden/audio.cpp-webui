@@ -2,8 +2,11 @@
 
 `audio.cpp` is a high-performance C++ audio inference framework built on top of `ggml`, designed to make modern local audio models practical, portable, and fast.
 
-> [!NOTE]
+Tired of juggling a dozen Conda environments, hundreds of Python packages, and dependency conflicts just to try a few audio models? audio.cpp gives those paths a shared native runtime instead.
+
+> [!IMPORTANT]
 > **CUDA performance headline:** multiple TTS paths already run **1.8x-5.0x faster than their Python reference paths** while cutting end-to-end latency by **45%-80%**.
+> **VibeVoice 1.5B:** generates a **90-minute podcast in 22 minutes** with **10 diffusion steps** and without quantization, runs about **4x faster than real time**, and is **2.8x faster than Python**.
 
 It is built for real end-to-end execution rather than one-off model demos: the same runtime powers TTS, voice cloning, voice conversion, ASR, diarization, VAD, source separation, alignment, codec-style models, and higher-level workflows through a common framework surface.
 
@@ -17,6 +20,17 @@ Highlights:
 
 <p><strong><span style="font-size:1.1em;">The goal of the framework is to provide highly optimized, reusable building blocks for audio-related models, so new model integrations can be brought up faster, shared components can be improved once and benefit many families, and real end-to-end inference paths can stay efficient, maintainable, and portable.</span></strong></p>
 
+## News
+
+> [!IMPORTANT]
+> **2026-06-30:** VibeVoice 1.5B is now released in the framework, bringing long-form, multi-speaker dialogue TTS into the normal audio.cpp model surface.
+
+> [!TIP]
+> **2026-06-30:** More detailed usage documentation is now available in [docs/usage.md](docs/usage.md), covering model setup, CLI usage, server usage, and common workflows.
+
+- **2026-06-26:** The speech intelligence side grew with released Citrinet ASR, MarbleNet VAD, and Sortformer diarization paths.
+- **2026-06-25:** The first release wave landed with TTS, voice cloning, voice conversion, alignment, VAD, codec, and multilingual generation support across Chatterbox, MioCodec, MioTTS, OmniVoice, PocketTTS, Qwen3, SeedVC, Silero VAD, Vevo2, and VoxCPM2.
+
 ## Supported Models
 
 Current model status in the framework:
@@ -24,13 +38,6 @@ Current model status in the framework:
 - `released`: The model is fully wired into the broader framework surface and ready for normal use.
 - `integration`: The model is end-to-end working and optimized, but not yet fully wired into the broader framework surface. Those models are expected to be added to the broader framework surface gradually over time.
 - `optimization`: The model is end-to-end working, but still needs more optimization work before it should be treated like a released or integration-level path.
-
-### News
-
-| Release date | Released models |
-|---|---|
-| 2026-06-26 | `citrinet_asr`, `marblenet_vad`, `sortformer_diar` |
-| 2026-06-25 | `chatterbox`, `miocodec`, `miotts`, `omnivoice`, `pocket_tts`, `qwen3_asr`, `qwen3_forced_aligner`, `qwen3_tts`, `seed_vc`, `silero_vad`, `vevo2`, `voxcpm2` |
 
 | Family | Task | Supported language(s) | Supported variant(s) in this repo | Release status |
 |---|---|---|---|---|
@@ -48,17 +55,20 @@ Current model status in the framework:
 | **silero_vad** | VAD | lang agnostic | Silero VAD | **released** |
 | **sortformer_diar** | diarization | en | Sortformer-4spk-v1 | **released** |
 | **vevo2** | TTS, singing generation, voice conversion, singing conversion, editing | en, zh | Vevo2 with Qwen2.5-0.5B AR model | **released** |
+| **vibevoice** | TTS, multi-speaker dialogue TTS | en, zh | VibeVoice-1.5B | **released** |
 | **voxcpm2** | TTS, voice cloning, voice design | ar, da, de, el, en, es, fi, fr, he, hi, id, it, ja, km, ko, lo, ms, my, nl, no, pl, pt, ru, sv, sw, th, tl, tr, vi, zh | VoxCPM2-2B, 48 kHz | **released** |
 | ace_step | music generation | 50+ langs | ACE-Step 1.5 with acestep-5Hz-lm-1.7B | integration |
 | audio_flamingo_next | audio understanding, ASR, audio captioning, audio QA | en, multilingual audio understanding | Audio Flamingo Next Instruct, Qwen2-7B based | optimization |
 | demucs | source separation | lang agnostic | HTDemucs, HTDemucs_ft | integration |
 | heartmula | music generation | zh, en, ja, ko, es | HeartMuLa-oss-3B with HeartCodec-oss | integration |
 | higgs_tts | TTS, voice cloning, expressive speech | 100+ languages | Higgs Audio v3 TTS 4B | integration |
+| irodori_tts | TTS, voice cloning, voice design | ja | Irodori-TTS-500M-v3, Irodori-TTS-600M-v3-VoiceDesign | integration |
 | kokoro_tts | TTS | en-us, en-gb | Kokoro-82M | integration |
 | moss_tts | TTS, voice cloning | zh, yue, en, ar, cs, da, nl, fi, fr, de, el, he, hi, hu, it, ja, ko, mk, ms, fa, pl, pt, ro, ru, es, sw, sv, tl, th, tr, vi | MOSS-TTS-Nano-100M | integration |
 | parakeet_tdt | ASR | en, es, fr, de, da, nl, fi, it, pl, pt, ru, bg, cs, el | Parakeet-TDT-0.6B-v3 | integration |
 | roformer | vocal separation | lang agnostic | Mel-Band-Roformer vocal separation variants | integration |
-| vibevoice | TTS, multi-speaker dialogue TTS | en, zh | VibeVoice-1.5B and VibeVoice-Realtime-0.5B | integration |
+| stable_audio | music generation, sound generation, audio editing | en | Stable Audio 3 Small Music, Stable Audio 3 Small SFX, Stable Audio 3 Medium | integration |
+| supertonic | TTS | en | Supertonic 3 | integration |
 
 PocketTTS language selection is a model-load option. When the model path points at the PocketTTS root, the loader uses `english` unless you pass `--load-option language=<name>`. Kyutai's normal non-English PocketTTS releases are smaller distilled language models intended for the fast PocketTTS path. The `_24l` variants are larger 24-layer, undistilled preview models that can sound better but are slower. Kyutai currently publishes French only as `french_24l`, not as a normal distilled `french` language directory, so French is not listed as a normal PocketTTS language here.
 
@@ -178,6 +188,31 @@ build\windows-cpu-release\bin\audiocpp_cli.exe
 build\windows-cuda-release\bin\audiocpp_cli.exe
 ```
 
+### Metal Build
+
+On macOS, use the Metal helper script to build against ggml's Metal backend. It requires Xcode or the Xcode Command Line Tools with the Metal compiler available through `xcrun`.
+
+```bash
+scripts/build_metal.sh --target audiocpp_cli
+```
+
+The script configures `build/macos-metal-release` by default, enables `ENGINE_ENABLE_METAL=ON`, disables CUDA and Vulkan, embeds the Metal shader library, and builds static libraries plus the requested target.
+
+Useful variants:
+
+```bash
+scripts/build_metal.sh --target audiocpp_server
+scripts/build_metal.sh --build-type Release --archs arm64 --target audiocpp_cli
+scripts/build_metal.sh --with-tests --target audio_dsp_test
+scripts/build_metal.sh --openmp auto --target audiocpp_cli
+```
+
+The built CLI is written to:
+
+```bash
+build/macos-metal-release/bin/audiocpp_cli
+```
+
 Build options:
 
 | Option | Meaning | Default |
@@ -211,16 +246,26 @@ build/bin/audiocpp_cli
 High-level command shape:
 
 ```bash
-audiocpp_cli --task <task> --family <family> --model <path> --backend <backend> --mode <mode> [options]
+audiocpp_cli --task <task> --model <path> [--family <family>] [--backend <backend>] [--mode <mode>] [options]
 ```
 
 Core selectors:
 
-- `--task vad|asr|diar|sep|tts|clon|vc|s2s|align|vdes|spk|svc`
-- `--family <name>`
+- `--task vad|asr|diar|sep|gen|tts|clon|vc|s2s|align|vdes|spk|svc`
 - `--model <path>`
+- `--family <name>` optionally narrows model-loader selection when a model path could match more than one family
 - `--backend cpu|cuda|vulkan|metal|best`
 - `--mode offline|streaming`
+
+Common interface options:
+
+- `--load-option key=value` passes model-load options, such as PocketTTS language selection
+- `--session-option key=value` passes session/runtime options, such as backend-specific weight controls
+- `--request-option key=value` passes per-request model options
+- `--config <id>` selects a discovered config asset
+- `--weight <id>` selects a discovered weight asset
+- `--device <n>` selects the backend device
+- `--threads <n>` sets backend and OpenMP worker threads
 
 > [!WARNING]
 > The CLI surface already exposes streaming-oriented arguments and request paths, but framework-wide streaming inference is not generally supported yet. The models should still be treated as offline-only.
@@ -281,14 +326,20 @@ build/bin/audiocpp_cli \
 Useful CLI features:
 
 - `--help` with `--task` shows task-oriented help
-- `--help` with `--model` shows model-owned options
+- `--help` with `--model <path>` and optional `--family <family>` shows model-owned request, session, and load options
 - `--inspect` prints discovered configs, weights, and capabilities
+- `--list-loaders` prints registered model families
 - `--batch-text-file <txt>` runs one offline request per non-empty line
 - `--batch-audio-dir <dir>` runs one offline request per `.wav`
 - `--request-sequence <json>` runs a multi-request offline session
+- `--batch-merge-audio none|concat` controls batch audio merge behavior
+- `--batch-manifest-out <json>` writes a batch output manifest
 - `--pipeline <json>` runs a workflow instead of a raw task
+- `--list-pipelines` prints registered workflows
+- `--workflow-input key=value` overrides pipeline inputs
 - `--log` streams framework logs to stdout
 - `--log-file <path>` streams framework logs to a file in real time
+- `--segments-out`, `--turns-out`, and `--words-out` write structured JSON outputs
 
 ### Pipelines
 
@@ -344,28 +395,37 @@ Recommended top-level install packages:
 | Package id | Model | HF ready-to-use repo |
 |---|---|---|
 | `ace_step` | ACE-Step 1.5 | No |
+| `chatterbox` | Chatterbox | **Yes** |
+| `citrinet_asr` | Citrinet ASR converted layout | No |
+| `heartmula` | HeartMuLa | No |
+| `higgs_audio_v3_tts_4b` | Higgs Audio v3 TTS 4B | **Yes** |
+| `htdemucs` | HTDemucs | No |
+| `irodori_tts_500m_v3` | Irodori-TTS 500M v3 | No |
+| `irodori_tts_600m_v3_voice_design` | Irodori-TTS 600M v3 VoiceDesign | No |
 | `kokoro_82m_bf16` | Kokoro 82M bf16 | **Yes** |
+| `marblenet_vad` | MarbleNet VAD converted layout | No |
+| `mel_band_roformer` | Mel RoFormer MLX | **Yes** |
+| `miocodec_25hz_44k_v2` | MioCodec 25Hz 44.1kHz v2 | No |
+| `miotts_1_7b` | MioTTS 1.7B | No |
 | `moss_tts` | MOSS TTS Nano 100M | No |
 | `omnivoice` | OmniVoice | **Yes** |
+| `parakeet_tdt_0_6b_v3` | Parakeet TDT 0.6B v3 | **Yes** |
+| `pocket_tts` | PocketTTS | **Yes** |
 | `qwen3_asr_0_6b` | Qwen3 ASR 0.6B | **Yes** |
 | `qwen3_forced_aligner_0_6b` | Qwen3 Forced Aligner 0.6B | **Yes** |
 | `qwen3_tts_0_6b_base` | Qwen3 TTS 12Hz 0.6B Base | **Yes** |
 | `qwen3_tts_1_7b_base` | Qwen3 TTS 12Hz 1.7B Base | **Yes** |
 | `qwen3_tts_1_7b_custom_voice` | Qwen3 TTS 12Hz 1.7B Custom Voice | **Yes** |
 | `qwen3_tts_1_7b_voice_design` | Qwen3 TTS 12Hz 1.7B Voice Design | **Yes** |
-| `chatterbox` | Chatterbox | **Yes** |
-| `sortformer_diar_4spk_v1` | Sortformer diarization 4 speaker v1 | **Yes** |
-| `parakeet_tdt_0_6b_v3` | Parakeet TDT 0.6B v3 | **Yes** |
-| `pocket_tts` | PocketTTS | **Yes** |
-| `miocodec_25hz_44k_v2` | MioCodec 25Hz 44.1kHz v2 | No |
-| `miotts_1_7b` | MioTTS 1.7B | No |
-| `mel_band_roformer` | Mel RoFormer MLX | **Yes** |
-| `vevo2` | Vevo2 | No |
 | `seed_vc` | SeedVC-MLX | **Yes** |
-| `citrinet_asr` | Citrinet ASR converted layout | No |
-| `marblenet_vad` | MarbleNet VAD converted layout | No |
+| `sortformer_diar_4spk_v1` | Sortformer diarization 4 speaker v1 | **Yes** |
+| `stable_audio_3_medium` | Stable Audio 3 Medium | **Yes** |
+| `stable_audio_3_small_music` | Stable Audio 3 Small Music | **Yes** |
+| `stable_audio_3_small_sfx` | Stable Audio 3 Small SFX | **Yes** |
+| `supertonic_3` | Supertonic 3 | **Yes** |
+| `vevo2` | Vevo2 | No |
+| `vibevoice_1_5b` | VibeVoice 1.5B | No |
 | `voxcpm2` | VoxCPM2 | No |
-| `htdemucs` | HTDemucs | No |
 
 > [!WARNING]
 > PocketTTS is hosted in a gated Hugging Face repo, so the model manager needs a Hugging Face token with access to `kyutai/pocket-tts`. It currently downloads only the English model and the built-in `alba` voice.
@@ -498,18 +558,35 @@ All performance metrics in this section were measured on Ubuntu with the CUDA ba
 
 audio.cpp already shows some genuinely exciting wins against the matching Python reference paths, especially on the TTS side, even when using the original model weights without quantization. The headline win is wall time: several TTS paths run **1.8x-5.0x faster** than Python while cutting end-to-end latency by **45%-80%**.
 
-- In one-shot runs, several TTS-family models already land far ahead of Python: `pocket tts` is **3.68x faster** with **72.80% less wall time**, `miotts` is **2.73x faster** with **63.39% less wall time**, `moss tts` is **2.33x faster** with **57.07% less wall time**, `qwen3 tts` is **1.83x faster** with **45.34% less wall time**, and `vevo2` is **5.03x faster** with **80.11% less wall time**.
-- In long-lived-session runs, where the same loaded session serves multiple requests in sequence, the gains stay strong: `pocket tts` is **3.22x faster** with **68.91% less wall time**, `qwen3 tts` is **2.74x faster** with **63.47% less wall time**, `moss tts` is **2.66x faster** with **62.35% less wall time**, `miotts` is **2.28x faster** with **56.22% less wall time**, and `vevo2` is **1.75x faster** with **42.72% less wall time**.
-- In long-form runs on the shared 6,026-character, 1,028-word passage, the strongest Python-relative wins still show up clearly: `pocket tts` is **3.15x faster** with **68.23% less wall time**, `qwen3 tts` is **3.06x faster** with **67.33% less wall time**, `vevo2` is **1.77x faster** with **43.51% less wall time**, and `chatterbox` is **1.58x faster** with **36.83% less wall time**.
+- In one-shot runs, several TTS-family models already land far ahead of Python:
+  - `vevo2`: **5.03x faster** with **80.11% less wall time**
+  - `pocket tts`: **3.68x faster** with **72.80% less wall time**
+  - `miotts`: **2.73x faster** with **63.39% less wall time**
+  - `moss tts`: **2.33x faster** with **57.07% less wall time**
+  - `qwen3 tts`: **1.83x faster** with **45.34% less wall time**
+  - `vibevoice`: **1.40x faster** with **28.75% less wall time**
+- In long-lived-session runs, where the same loaded session serves multiple requests in sequence, the gains stay strong:
+  - `pocket tts`: **3.22x faster** with **68.91% less wall time**
+  - `qwen3 tts`: **2.74x faster** with **63.47% less wall time**
+  - `moss tts`: **2.66x faster** with **62.35% less wall time**
+  - `miotts`: **2.28x faster** with **56.22% less wall time**
+  - `vibevoice`: **1.77x faster** with **43.55% less wall time**
+  - `vevo2`: **1.75x faster** with **42.72% less wall time**
+- In long-form runs on the shared 6,026-character, 1,028-word passage, the strongest Python-relative wins still show up clearly:
+  - `pocket tts`: **3.15x faster** with **68.23% less wall time**
+  - `qwen3 tts`: **3.06x faster** with **67.33% less wall time**
+  - `vibevoice`: **2.86x faster** with **65.07% less wall time**
+  - `vevo2`: **1.77x faster** with **43.51% less wall time**
+  - `chatterbox`: **1.58x faster** with **36.83% less wall time**
 - These long-lived-session numbers are especially important for real applications, because they reflect the common case where model load, cached state, and reusable runtime setup are amortized across many requests.
 - Bars below the 1.0x line are useful too: they spotlight exactly where more optimization work is still worth doing.
 
 <p align="center">
-  <img src="assets/figure/perf_one_shot_20260625.svg" alt="One-shot" width="720" />
+  <img src="assets/figure/perf_one_shot_20260630.svg" alt="One-shot" width="720" />
 </p>
 
 <p align="center">
-  <img src="assets/figure/perf_long_lived_session_20260625.svg" alt="Long-lived session" width="720" />
+  <img src="assets/figure/perf_long_lived_session_20260630.svg" alt="Long-lived session" width="720" />
 </p>
 
 The figures report `Python wall time / audio.cpp wall time`. The 1.0x line means equal wall time; bars above 1.0x mean audio.cpp is faster than Python, and bars below 1.0x mean it is slower.
@@ -526,9 +603,10 @@ For TTS-family models, the measured one-shot RTF is:
 | pocket tts | 8.08 | 0.26 | 0.032 | 31.09x |
 | qwen3 tts | 11.44 | 4.46 | 0.390 | 2.56x |
 | vevo2 | 8.66 | 2.47 | 0.285 | 3.51x |
+| vibevoice | 11.07 | 5.02 | 0.454 | 2.20x |
 | voxcpm2 | 5.60 | 3.09 | 0.551 | 1.81x |
 
-For long-form TTS tests, each run uses the same 6,026-character, 1,028-word input text. The measured RTF is:
+For long-form TTS tests, each run uses the same 6,026-character, 1,028-word input text (vibevoice uses 106,310 chars, 18,052 words, 4 speakers). The measured RTF is:
 
 | model | audio len (s) | wall time (s) | RTF | x faster than real time |
 |---|---:|---:|---:|---:|
@@ -541,6 +619,7 @@ For long-form TTS tests, each run uses the same 6,026-character, 1,028-word inpu
 | qwen3 tts | 327.60 | 72.65 | 0.222 | 4.51x |
 | vevo2 | 457.68 | 52.47 | 0.115 | 8.72x |
 | voxcpm2 | 315.84 | 72.70 | 0.230 | 4.34x |
+| vibevoice | 5615.73 | 1376.84 | 0.245 | 4.08x |
 
 ## Precision/Quantization Support
 

@@ -1,5 +1,6 @@
 /build*/
 /cmake-build*/
+._*
 .vs/
 .vscode/
 compile_commands.json

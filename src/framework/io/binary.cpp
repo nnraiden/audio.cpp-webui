@@ -96,10 +96,13 @@ void BinaryBlob::discard_range(size_t offset, size_t size) const noexcept {
     const size_t aligned_end = ((end + page_size - 1) / page_size) * page_size;
     const size_t clamped_end = std::min(aligned_end, size_);
     if (clamped_end > aligned_begin) {
-        (void) madvise(
-            const_cast<std::byte *>(mapped_) + static_cast<std::ptrdiff_t>(aligned_begin),
-            clamped_end - aligned_begin,
-            MADV_DONTNEED);
+        void * address = const_cast<std::byte *>(mapped_) + static_cast<std::ptrdiff_t>(aligned_begin);
+        const size_t length = clamped_end - aligned_begin;
+#if defined(MADV_DONTNEED)
+        (void) madvise(address, length, MADV_DONTNEED);
+#elif defined(POSIX_MADV_DONTNEED)
+        (void) posix_madvise(address, length, POSIX_MADV_DONTNEED);
+#endif
     }
 #else
     (void) offset;
