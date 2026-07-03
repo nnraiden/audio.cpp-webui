@@ -1873,6 +1873,12 @@ public:
         return out;
     }
 
+    int64_t release_cached_step_graph() {
+        const int64_t released_steps = cached_step_graph_ != nullptr ? cached_step_graph_->cache_steps() : 0;
+        cached_step_graph_.reset();
+        return released_steps;
+    }
+
 private:
     TalkerPrefillGraph::OutputWithCache run_prefill_embeddings_with_state(
         const std::vector<float> & embeddings,
@@ -1913,6 +1919,10 @@ Qwen3TalkerCodes Qwen3TalkerStepRuntime::generate(
     const Qwen3TTSGenerationOptions & options,
     float repetition_penalty) {
     return impl_->generate(prefill, options, repetition_penalty);
+}
+
+int64_t Qwen3TalkerStepRuntime::release_cached_step_graph() {
+    return impl_->release_cached_step_graph();
 }
 
 Qwen3Talker::Qwen3Talker(Qwen3TTSTalkerConfig config) : config_(std::move(config)) {}

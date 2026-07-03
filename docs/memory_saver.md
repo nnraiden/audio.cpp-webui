@@ -16,7 +16,7 @@ For each model:
 4. Record peak VRAM, final resident VRAM, server wall time, generated audio length, and RTF.
 5. Use the same request, native/default weights, backend, seed, duration, and sampling settings for the default and `mem_saver` pair.
 6. Use a request that actually stresses the model memory path. For longform music models, the existing checks used 120 second targets and long lyrics/text.
-7. If default and `mem_saver` results are unexpectedly identical, audit the model release path before accepting the result.
+7. On a stress request, `mem_saver` should usually lower final resident VRAM. If resident VRAM does not drop, check the release logs and confirm the request exercised the graph/cache state that `mem_saver` is supposed to release.
 
 ## Results
 
@@ -27,6 +27,7 @@ Native/default weights were used for all rows.
 - Stable Audio rows use existing 120 second server measurements.
 - OmniVoice used default generation parameters, native/default weights, no explicit text chunk size, and no seed for the memory-stat pair.
 - Chatterbox used one fixed-seed voice-clone request with native/default weights and no explicit max token cap.
+- Qwen3 TTS Base used a five-request voice-clone server sequence: two small requests, one 6026-character long request with `max_tokens=4096`, then two small requests. Peak VRAM was sampled during each request; resident VRAM is the post-response value after the long request.
 
 | Model | Mode | Peak VRAM | Resident VRAM | Server wall | Audio | RTF |
 |---|---|---:|---:|---:|---:|---:|
@@ -44,3 +45,5 @@ Native/default weights were used for all rows.
 | OmniVoice | mem_saver | 10526 MiB | 3662 MiB | 968.823 ms | 4.32s | 0.224264 |
 | Chatterbox | default | 13408 MiB | 13408 MiB | 4264.11 ms | 6.76s | 0.630786 |
 | Chatterbox | mem_saver | 12272 MiB | 5074 MiB | 4832.43 ms | 6.76s | 0.714856 |
+| Qwen3 TTS Base voice clone | default | 7518 MiB | 7518 MiB | 122013.55 ms | 327.6s | 0.372447 |
+| Qwen3 TTS Base voice clone | mem_saver | 7520 MiB | 5684 MiB | 121919.91 ms | 327.6s | 0.372161 |
