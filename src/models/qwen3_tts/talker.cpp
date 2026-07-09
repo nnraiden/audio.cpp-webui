@@ -772,6 +772,7 @@ public:
     Qwen3TalkerWeightsRuntime(
         std::shared_ptr<const Qwen3TTSAssets> assets,
         core::BackendType backend_type,
+        int device,
         int threads,
         size_t graph_arena_bytes,
         size_t talker_constant_context_bytes,
@@ -787,7 +788,7 @@ public:
             throw std::runtime_error("Qwen3 talker weights runtime requires positive thread count");
         }
         backend_type_ = backend_type;
-        backend_ = core::init_backend({backend_type_, 0, threads_});
+        backend_ = core::init_backend({backend_type_, device, threads_});
         weights_ = std::make_shared<Qwen3TalkerWeights>(
             load_talker_weights(*assets_, backend_, backend_type_, kTalkerWeightContextBytes, weight_storage_type));
         talker_constants_ = std::make_unique<common::ConstantTensorCache>(
@@ -1787,6 +1788,7 @@ const Qwen3TTSTalkerConfig & Qwen3Talker::config() const noexcept {
 std::shared_ptr<const Qwen3TalkerWeightsRuntime> Qwen3Talker::create_weights_runtime(
     std::shared_ptr<const Qwen3TTSAssets> assets,
     core::BackendType backend_type,
+    int device,
     int threads,
     size_t graph_arena_bytes,
     size_t talker_constant_context_bytes,
@@ -1795,6 +1797,7 @@ std::shared_ptr<const Qwen3TalkerWeightsRuntime> Qwen3Talker::create_weights_run
     return std::make_shared<Qwen3TalkerWeightsRuntime>(
         std::move(assets),
         backend_type,
+        device,
         threads,
         graph_arena_bytes,
         talker_constant_context_bytes,
