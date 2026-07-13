@@ -1,6 +1,6 @@
 # Web UI Tests
 
-This folder contains the Web UI smoke test and its usage notes.
+This folder contains the Web UI smoke test plus focused JS coverage for family-specific form logic.
 
 ## What It Covers
 
@@ -10,7 +10,9 @@ This folder contains the Web UI smoke test and its usage notes.
 - the server serves `GET /`
 - startup fails cleanly when the target port is already in use
 
-This is meant to catch real launch issues, not just JavaScript syntax errors.
+`ttsFamilies.test.js` verifies family-specific rendering and request serialization paths, including OmniVoice clone and voice-design behavior.
+
+Together these checks cover startup plus the modular TTS-family request builder without inflating server smoke coverage.
 
 ## Run It
 
@@ -24,6 +26,7 @@ This runs:
 
 ```bash
 node test/smoke.cjs
+node --experimental-default-type=module test/ttsFamilies.test.js
 ```
 
 ## Requirements

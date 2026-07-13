@@ -1,6 +1,6 @@
 # audio.cpp
 
-This fork is maintained for my own local use. It stays close to upstream `audio.cpp`, adds a lightweight built-in Web UI path, and does not aim to become a broad downstream distribution with a separate product roadmap.
+This fork is maintained for my own local use. It stays close to upstream `audio.cpp`, adds a lightweight built-in Web UI path, and does not aim to become a broad downstream distribution with a separate product roadmap. The current Web UI is wired for `pocket_tts`, `vibevoice`, and `omnivoice`.
 
 For the Web UI, set `"webui_root"` in `server.json`, start `audiocpp_server`, and open the server root in your browser. Docker example:
 
