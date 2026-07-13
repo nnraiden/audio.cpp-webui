@@ -29,6 +29,7 @@ struct ServerModelConfig {
     std::unordered_map<std::string, std::string> load_options;
     std::unordered_map<std::string, std::string> session_options;
     std::unordered_map<std::string, VoicePreset> voice_presets;
+    std::optional<std::filesystem::path> voice_samples_base;
     std::optional<VoicePreset> default_voice_preset;
     std::optional<std::string> default_voice_preset_id;
 };

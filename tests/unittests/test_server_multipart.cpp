@@ -88,6 +88,30 @@ void test_parse_multipart_body_binary_with_embedded_nul() {
     require(parts[0].data == payload, "binary part data is byte-exact");
 }
 
+void test_parse_multipart_body_repeated_ordered_fields() {
+    const std::string boundary = "BOUNDARY";
+    const std::string body =
+        "--BOUNDARY\r\n"
+        "Content-Disposition: form-data; name=\"voice_samples\"\r\n"
+        "\r\n"
+        "/voices/alice.wav\r\n"
+        "--BOUNDARY\r\n"
+        "Content-Disposition: form-data; name=\"voice_samples\"; filename=\"bob.wav\"\r\n"
+        "Content-Type: audio/wav\r\n"
+        "\r\n"
+        "RIFF....WAVEfmt \r\n"
+        "--BOUNDARY--\r\n";
+
+    const auto parts = parse_multipart_body(body, boundary);
+    require(parts.size() == 2, "expected repeated ordered multipart fields");
+    require(parts[0].name == "voice_samples", "first repeated field name");
+    require(parts[0].filename.empty(), "first repeated field has no filename");
+    require(parts[0].data == "/voices/alice.wav", "first repeated field data");
+    require(parts[1].name == "voice_samples", "second repeated field name");
+    require(parts[1].filename == "bob.wav", "second repeated field filename");
+    require(parts[1].data == "RIFF....WAVEfmt ", "second repeated field data");
+}
+
 void test_parse_multipart_body_no_boundary_match() {
     require(parse_multipart_body("not a multipart body", "BOUNDARY").empty(), "no matching boundary yields no parts");
 }
@@ -99,6 +123,7 @@ int main() {
         test_extract_multipart_boundary();
         test_parse_multipart_body_fields_and_file();
         test_parse_multipart_body_binary_with_embedded_nul();
+        test_parse_multipart_body_repeated_ordered_fields();
         test_parse_multipart_body_no_boundary_match();
     } catch (const std::exception & error) {
         std::cerr << error.what() << '\n';

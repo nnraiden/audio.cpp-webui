@@ -1,1 +1,3 @@
 output/
+compose.podman.yml
+server.json

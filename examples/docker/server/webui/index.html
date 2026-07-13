@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>audio.cpp Model Tester</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">audio.cpp</p>
+        <h1>Model Tester</h1>
+        <p class="lede">A separate v1 web UI for exercising the running server without touching backend code.</p>
+      </div>
+      <div class="status-card">
+        <p class="status-label">Backend</p>
+        <p id="health-status" class="status-value">Checking...</p>
+        <p id="health-detail" class="status-detail">Waiting for /health</p>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Session</p>
+            <h2>Model Selection</h2>
+          </div>
+          <button id="refresh-models" class="secondary-button" type="button">Refresh</button>
+        </div>
+
+        <div class="field-grid">
+          <label class="field">
+            <span>Model</span>
+            <select id="model-select"></select>
+          </label>
+
+          <label class="field">
+            <span>Family</span>
+            <input id="model-family" type="text" readonly>
+          </label>
+
+          <label class="field">
+            <span>Task</span>
+            <input id="model-task" type="text" readonly>
+          </label>
+
+          <label class="field">
+            <span>Mode</span>
+            <input id="model-mode" type="text" readonly>
+          </label>
+        </div>
+
+        <p id="model-summary" class="muted-copy">Loading models...</p>
+      </section>
+
+      <section id="tts-panel" class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">TTS</p>
+            <h2>Speech Synthesis</h2>
+          </div>
+        </div>
+
+        <form id="tts-form" class="stacked-form">
+          <div id="tts-family-fields"></div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Seed</span>
+              <input id="tts-seed" type="number" placeholder="Optional">
+            </label>
+
+            <label class="field">
+              <span>Max Tokens</span>
+              <input id="tts-max-tokens" type="number" placeholder="Optional">
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="tts-submit" class="primary-button" type="submit">Generate Audio</button>
+          </div>
+        </form>
+
+        <div id="tts-result" class="result-card hidden">
+          <div class="result-header">
+            <h3>Audio Result</h3>
+            <a id="tts-download" class="link-button" href="#" download="speech.wav">Download WAV</a>
+          </div>
+          <audio id="tts-audio" controls></audio>
+          <dl id="tts-metrics" class="metrics"></dl>
+        </div>
+      </section>
+
+      <section id="asr-panel" class="panel hidden">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">ASR</p>
+            <h2>Transcription</h2>
+          </div>
+        </div>
+
+        <form id="asr-form" class="stacked-form">
+          <label class="field">
+            <span>Audio File</span>
+            <input id="asr-file" type="file" accept=".wav,audio/wav">
+            <small>Current server upload path supports WAV inputs.</small>
+          </label>
+
+          <label class="field">
+            <span>Language</span>
+            <input id="asr-language" type="text" placeholder="Optional, e.g. en or en-US">
+          </label>
+
+          <div class="actions">
+            <button id="asr-submit" class="primary-button" type="submit">Transcribe</button>
+          </div>
+        </form>
+
+        <div id="asr-result" class="result-card hidden">
+          <div class="result-header">
+            <h3>Transcript</h3>
+          </div>
+          <pre id="asr-text" class="transcript"></pre>
+          <dl id="asr-metrics" class="metrics"></dl>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Console</p>
+            <h2>Request Log</h2>
+          </div>
+          <button id="clear-log" class="secondary-button" type="button">Clear</button>
+        </div>
+        <pre id="event-log" class="event-log">UI loaded.</pre>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

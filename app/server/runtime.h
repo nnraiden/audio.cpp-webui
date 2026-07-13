@@ -59,11 +59,14 @@ private:
         LoadedModel & model,
         const engine::runtime::TaskRequest & request,
         const std::function<void(const engine::runtime::StreamEvent &)> & event_sink = {});
-    HttpResponse handle_speech(const std::string & body_text);
+    HttpResponse handle_speech(const HttpRequest & request);
+    HttpResponse handle_speech_json(const std::string & body_text);
+    HttpResponse handle_speech_multipart(const std::string & body_text, const std::string & boundary);
     HttpResponse handle_speech_stream(
         LoadedModel & model,
         const engine::runtime::TaskRequest & request,
-        const engine::io::json::Value & body);
+        const engine::io::json::Value & body,
+        std::shared_ptr<void> multipart_cleanup = {});
     HttpResponse handle_transcription(const HttpRequest & request);
     HttpResponse handle_transcription_json(const std::string & body_text);
     HttpResponse handle_transcription_multipart(const std::string & body_text, const std::string & boundary);

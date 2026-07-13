@@ -1,0 +1,42 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "device": 0,
+  "lazy_load": true,
+  "threads": 1,
+  "models": [
+    {
+      "id": "pocket-tts",
+      "family": "pocket_tts",
+      "path": "/models/pocket-tts/languages/english",
+      "task": "tts",
+      "mode": "offline",
+      "load_options": {
+        "language": "english"
+      },
+      "session_options": {
+        "language": "english"
+      }
+    },
+    {
+      "id": "vibevoice_1.5b",
+      "family": "vibevoice",
+      "path": "/models/vibevoice/1.5B",
+      "task": "tts",
+      "mode": "offline",
+      "load_options": {
+        "language": "english"
+      },
+      "session_options": {
+        "language": "english"
+      },
+      "voice_samples_base": "/models/vibevoice/1.5B/voices",
+      "voice_presets": {
+        "en_alice_woman": {
+          "voice_ref": "/models/vibevoice/1.5B/voices/en-Alice_woman.wav"
+        }
+      },
+      "default_voice_preset": "en_alice_woman"
+    }
+  ]
+}

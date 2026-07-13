@@ -89,6 +89,35 @@ void add_option_from_json(
     }
 }
 
+std::string lowercase_ascii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+std::string voice_samples_option_string(const Value & value) {
+    if (value.is_string()) {
+        return value.as_string();
+    }
+    if (!value.is_array()) {
+        throw std::runtime_error("voice_samples must be a string or array of strings");
+    }
+    std::ostringstream out;
+    bool first = true;
+    for (const auto & item : value.as_array()) {
+        if (!item.is_string()) {
+            throw std::runtime_error("voice_samples array items must be strings");
+        }
+        if (!first) {
+            out << ",";
+        }
+        first = false;
+        out << item.as_string();
+    }
+    return out.str();
+}
+
 std::vector<uint8_t> encode_pcm16_wav(const engine::runtime::AudioBuffer & audio) {
     if (audio.sample_rate <= 0) {
         throw std::runtime_error("audio output sample rate must be positive");
@@ -543,6 +572,69 @@ engine::runtime::TaskRequest build_openai_transcription_request(const Value & bo
     return request;
 }
 
+Value multipart_string_field(const std::string & value) {
+    return Value::make_string(value);
+}
+
+Value parse_multipart_json_field(const std::string & field_name, const std::string & value) {
+    if (field_name == "options") {
+        return engine::io::json::parse(value);
+    }
+    return multipart_string_field(value);
+}
+
+struct MultipartSpeechPayload {
+    Value body;
+    std::shared_ptr<void> temp_uploads;
+};
+
+MultipartSpeechPayload build_speech_multipart_payload(const std::string & body_text, const std::string & boundary) {
+    const auto parts = parse_multipart_body(body_text, boundary);
+    auto temp_uploads = std::make_shared<std::vector<TempFileGuard>>();
+    Value::Object fields;
+    Value::Array voice_samples;
+
+    for (const auto & part : parts) {
+        if (!part.filename.empty()) {
+            if (part.data.empty()) {
+                throw std::runtime_error("multipart speech upload '" + part.name + "' must not be empty");
+            }
+            if (!is_wav_upload_filename(part.filename)) {
+                throw std::runtime_error("multipart speech uploads currently support WAV files only");
+            }
+            const auto temp_path = write_temp_upload(part.filename, part.data);
+            temp_uploads->push_back(TempFileGuard{temp_path});
+            if (part.name == "voice_ref") {
+                fields["voice_ref"] = Value::make_string(temp_path.string());
+            } else if (part.name == "voice_samples") {
+                voice_samples.push_back(Value::make_string(temp_path.string()));
+            } else {
+                throw std::runtime_error("unsupported multipart speech file field: " + part.name);
+            }
+            continue;
+        }
+
+        if (part.name == "voice_samples") {
+            voice_samples.push_back(Value::make_string(part.data));
+            continue;
+        }
+        fields[part.name] = parse_multipart_json_field(part.name, part.data);
+    }
+
+    if (!voice_samples.empty()) {
+        fields["voice_samples"] = Value::make_array(std::move(voice_samples));
+    }
+    const auto model_it = fields.find("model");
+    if (model_it == fields.end() || !model_it->second.is_string() || model_it->second.as_string().empty()) {
+        throw std::runtime_error("multipart speech request requires a 'model' field");
+    }
+    const auto input_it = fields.find("input");
+    if (input_it == fields.end() || !input_it->second.is_string() || input_it->second.as_string().empty()) {
+        throw std::runtime_error("multipart speech request requires a non-empty 'input' field");
+    }
+    return {Value::make_object(std::move(fields)), std::move(temp_uploads)};
+}
+
 }  // namespace
 
 ServerState::ServerState(ServerConfig config, std::filesystem::path request_base)
@@ -573,7 +665,7 @@ HttpResponse ServerState::handle(const HttpRequest & request) {
         return handle_voices(request);
     }
     if (request.method == "POST" && request.path == "/v1/audio/speech") {
-        return handle_speech(request.body);
+        return handle_speech(request);
     }
     if (request.method == "POST" && request.path == "/v1/audio/transcriptions") {
         return handle_transcription(request);
@@ -765,6 +857,9 @@ engine::runtime::TaskRequest ServerState::build_speech_request(const LoadedModel
     if (const auto * value = body.find("reference_text")) {
         request.options["reference_text"] = value->as_string();
     }
+    if (const auto * value = body.find("voice_samples")) {
+        request.options["voice_samples"] = voice_samples_option_string(*value);
+    }
     if (has_voice) {
         request.voice = std::move(voice);
     }
@@ -822,7 +917,18 @@ ServerState::TimedTaskResult ServerState::run_streaming_model(
     return timed_result;
 }
 
-HttpResponse ServerState::handle_speech(const std::string & body_text) {
+HttpResponse ServerState::handle_speech(const HttpRequest & request) {
+    std::string content_type;
+    if (const auto it = request.headers.find("content-type"); it != request.headers.end()) {
+        content_type = it->second;
+    }
+    if (const auto boundary = extract_multipart_boundary(content_type)) {
+        return handle_speech_multipart(request.body, *boundary);
+    }
+    return handle_speech_json(request.body);
+}
+
+HttpResponse ServerState::handle_speech_json(const std::string & body_text) {
     const auto body = engine::io::json::parse(body_text);
     auto & model = require_model(body);
     const auto request = build_speech_request(model, body);
@@ -848,10 +954,37 @@ HttpResponse ServerState::handle_speech(const std::string & body_text) {
     return response;
 }
 
+HttpResponse ServerState::handle_speech_multipart(const std::string & body_text, const std::string & boundary) {
+    const auto payload = build_speech_multipart_payload(body_text, boundary);
+    auto & model = require_model(payload.body);
+    const auto request = build_speech_request(model, payload.body);
+    if (payload.body.find("stream_format") != nullptr || bool_field(payload.body, "stream", false)) {
+        return handle_speech_stream(model, request, payload.body, payload.temp_uploads);
+    }
+    const auto timed_result = model.task.mode == engine::runtime::RunMode::Streaming
+        ? run_streaming_model(model, request)
+        : run_model(model, request);
+    const auto & audio = select_audio_output(timed_result.result);
+    const auto wav = encode_pcm16_wav(audio);
+    const auto response_format = engine::io::json::optional_string(payload.body, "response_format", "wav");
+    if (response_format == "json" || response_format == "b64_json") {
+        return json_response(
+            "{\"audio\":" + json_quote(base64_encode(wav)) +
+            ",\"format\":\"wav\",\"timing\":" + timing_json(timed_result.wall_ms, audio) + "}");
+    }
+    HttpResponse response;
+    response.status = 200;
+    response.content_type = "audio/wav";
+    response.body = std::string(reinterpret_cast<const char *>(wav.data()), wav.size());
+    response.headers = timing_headers(timed_result.wall_ms, audio);
+    return response;
+}
+
 HttpResponse ServerState::handle_speech_stream(
     LoadedModel & model,
     const engine::runtime::TaskRequest & request,
-    const Value & body) {
+    const Value & body,
+    std::shared_ptr<void> multipart_cleanup) {
     if (model.task.mode != engine::runtime::RunMode::Streaming) {
         throw std::runtime_error("speech streaming requires a model configured with mode=streaming");
     }
@@ -865,7 +998,7 @@ HttpResponse ServerState::handle_speech_stream(
     }
 
     LoadedModel * model_ptr = &model;
-    auto stream_body = [this, model_ptr, request](HttpStreamWriter & writer) {
+    auto stream_body = [this, model_ptr, request, multipart_cleanup](HttpStreamWriter & writer) {
         bool wrote_audio = false;
         const auto timed_result = run_streaming_model(
             *model_ptr,
@@ -901,7 +1034,7 @@ HttpResponse ServerState::handle_speech_stream(
     if (stream_format == "sse") {
         return sse_response(std::move(stream_body));
     }
-    return chunked_audio_response([this, model_ptr, request](HttpStreamWriter & writer) {
+    return chunked_audio_response([this, model_ptr, request, multipart_cleanup](HttpStreamWriter & writer) {
         bool wrote_audio = false;
         (void)run_streaming_model(
             *model_ptr,
@@ -1103,14 +1236,17 @@ HttpResponse ServerState::handle_generic_stream(const std::string & body_text) {
 HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
     const std::string model_id = query_param(request.query, "model");
     std::vector<std::string> voices;
+    std::vector<std::string> preset_names;
+    std::vector<std::pair<std::string, std::string>> sample_entries;
 
     const auto it = model_index_.find(model_id);
     if (it != model_index_.end()) {
-        for (const auto & [name, preset] : models_.at(it->second)->voice_presets) {
-            (void) preset;
+        const auto & model = *models_.at(it->second);
+        for (const auto & [name, preset] : model.voice_presets) {
             voices.push_back(name);
+            preset_names.push_back(name);
         }
-        const auto embeddings_dir = models_.at(it->second)->config.path / "embeddings";
+        const auto embeddings_dir = model.config.path / "embeddings";
         std::error_code ec;
         if (std::filesystem::is_directory(embeddings_dir, ec)) {
             for (const auto & entry : std::filesystem::directory_iterator(embeddings_dir, ec)) {
@@ -1119,20 +1255,78 @@ HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
                 }
             }
         }
-    }
-    std::sort(voices.begin(), voices.end());
-    voices.erase(std::unique(voices.begin(), voices.end()), voices.end());
-
-    std::ostringstream out;
-    out << "{\"voices\":[";
-    for (size_t i = 0; i < voices.size(); ++i) {
-        if (i != 0) {
-            out << ",";
+        if (model.config.voice_samples_base.has_value() && std::filesystem::is_directory(*model.config.voice_samples_base, ec)) {
+            for (const auto & entry : std::filesystem::directory_iterator(*model.config.voice_samples_base, ec)) {
+                if (!entry.is_regular_file()) {
+                    continue;
+                }
+                const std::string extension = lowercase_ascii(entry.path().extension().string());
+                if (extension != ".wav") {
+                    continue;
+                }
+                sample_entries.emplace_back(entry.path().stem().string(), entry.path().string());
+            }
         }
-        out << json_quote(voices[i]);
+
+        std::sort(preset_names.begin(), preset_names.end());
+        std::sort(sample_entries.begin(), sample_entries.end());
+
+        std::ostringstream presets_json;
+        for (size_t i = 0; i < preset_names.size(); ++i) {
+            if (i != 0) {
+                presets_json << ",";
+            }
+            const auto & name = preset_names[i];
+            const auto & preset = model.voice_presets.at(name);
+            presets_json << "{\"id\":" << json_quote(name)
+                << ",\"voice_id\":";
+            if (preset.voice_id.has_value()) {
+                presets_json << json_quote(*preset.voice_id);
+            } else {
+                presets_json << "null";
+            }
+            presets_json << ",\"voice_ref\":";
+            const auto config_preset = model.config.voice_presets.find(name);
+            if (config_preset != model.config.voice_presets.end() && config_preset->second.voice_ref.has_value()) {
+                presets_json << json_quote(config_preset->second.voice_ref->string());
+            } else {
+                presets_json << "null";
+            }
+            presets_json << ",\"reference_text\":";
+            if (preset.reference_text.has_value()) {
+                presets_json << json_quote(*preset.reference_text);
+            } else {
+                presets_json << "null";
+            }
+            presets_json << ",\"is_default\":"
+                << (model.config.default_voice_preset_id.has_value() && *model.config.default_voice_preset_id == name ? "true" : "false")
+                << "}";
+        }
+
+        std::ostringstream samples_json;
+        for (size_t i = 0; i < sample_entries.size(); ++i) {
+            if (i != 0) {
+                samples_json << ",";
+            }
+            samples_json << "{\"id\":" << json_quote(sample_entries[i].first)
+                << ",\"path\":" << json_quote(sample_entries[i].second) << "}";
+        }
+
+        std::sort(voices.begin(), voices.end());
+        voices.erase(std::unique(voices.begin(), voices.end()), voices.end());
+
+        std::ostringstream out;
+        out << "{\"voices\":[";
+        for (size_t i = 0; i < voices.size(); ++i) {
+            if (i != 0) {
+                out << ",";
+            }
+            out << json_quote(voices[i]);
+        }
+        out << "],\"presets\":[" << presets_json.str() << "],\"samples\":[" << samples_json.str() << "]}";
+        return json_response(out.str());
     }
-    out << "]}";
-    return json_response(out.str());
+    return json_response("{\"voices\":[],\"presets\":[],\"samples\":[]}");
 }
 
 std::string ServerState::models_json() const {
