@@ -53,3 +53,4 @@ Web UI failed to bind 127.0.0.1:<port> because the address is already in use.
 - `npm start`: manual launch
 - `npm run lint`: frontend linting
 - `node --check server.js`: quick syntax check for the Node entrypoint
+- [../FORK_TESTS.md](/secondary/docker/audio.cpp/examples/docker/server/FORK_TESTS.md): full fork acceptance workflow, including Docker smoke
