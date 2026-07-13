@@ -83,6 +83,67 @@ void test_inline_default_and_named_presets() {
     require(model.voice_presets.at("builtin").voice_id == "alba", "named voice_id parsed");
 }
 
+void test_top_level_voice_samples_base() {
+    const auto root = make_temp_root();
+    const auto config_path = write_config(
+        root,
+        "server_shared_samples.json",
+        R"JSON({
+  "voice_samples_base": "voices/shared",
+  "models": [
+    {
+      "id": "tts",
+      "family": "vibevoice",
+      "path": "models/vibevoice"
+    }
+  ]
+})JSON");
+
+    const auto config = minitts::server::load_server_config(config_path);
+    require(config.voice_samples_base.has_value(), "top-level voice_samples_base parsed");
+    require(*config.voice_samples_base == root / "voices/shared", "top-level voice_samples_base resolved");
+}
+
+void test_omitted_voice_samples_base() {
+    const auto root = make_temp_root();
+    const auto config_path = write_config(
+        root,
+        "server_no_shared_samples.json",
+        R"JSON({
+  "models": [
+    {
+      "id": "tts",
+      "family": "pocket_tts",
+      "path": "models/pocket-tts"
+    }
+  ]
+})JSON");
+
+    const auto config = minitts::server::load_server_config(config_path);
+    require(!config.voice_samples_base.has_value(), "omitted top-level voice_samples_base stays unset");
+}
+
+void test_top_level_webui_root() {
+    const auto root = make_temp_root();
+    const auto config_path = write_config(
+        root,
+        "server_webui.json",
+        R"JSON({
+  "webui_root": "examples/docker/server/webui",
+  "models": [
+    {
+      "id": "tts",
+      "family": "pocket_tts",
+      "path": "models/pocket-tts"
+    }
+  ]
+})JSON");
+
+    const auto config = minitts::server::load_server_config(config_path);
+    require(config.webui_root.has_value(), "top-level webui_root parsed");
+    require(*config.webui_root == root / "examples/docker/server/webui", "top-level webui_root resolved");
+}
+
 void test_default_preset_name() {
     const auto root = make_temp_root();
     const auto config_path = write_config(
@@ -145,6 +206,9 @@ void test_missing_default_preset_name_is_rejected() {
 int main() {
     try {
         test_inline_default_and_named_presets();
+        test_top_level_voice_samples_base();
+        test_omitted_voice_samples_base();
+        test_top_level_webui_root();
         test_default_preset_name();
         test_missing_default_preset_name_is_rejected();
     } catch (const std::exception & error) {
