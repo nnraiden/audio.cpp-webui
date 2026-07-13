@@ -1,45 +1,8 @@
-import { fetchHealth, fetchModels, fetchVoices, fetchWebUiVoiceCatalog, synthesizeSpeech, transcribeAudio } from "./api.js";
+import { fetchHealth, fetchModels, fetchVoices, synthesizeSpeech, transcribeAudio } from "./api.js";
 import { elements } from "./dom.js";
 import { clearOutputs, logEvent, renderAsrResult, renderHealth, renderHealthError, renderModels, renderTtsFamilyForm, renderTtsResult } from "./ui.js";
 import { getFamilyDraft, getSelectedModel, setFamilyDraft, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog } from "./state.js";
 import { buildSpeechRequest, ensureFamilyDraft, readFamilyDraftFromDom, updateFamilyDraftFile } from "./ttsFamilies.js";
-
-function mergeVoiceCatalogs(primary, fallback) {
-  const base = {
-    voices: Array.isArray(primary?.voices) ? [...primary.voices] : [],
-    presets: Array.isArray(primary?.presets) ? [...primary.presets] : [],
-    samples: Array.isArray(primary?.samples) ? [...primary.samples] : [],
-  };
-
-  const presetIds = new Set(base.presets.map((preset) => preset.id));
-  for (const preset of Array.isArray(fallback?.presets) ? fallback.presets : []) {
-    if (!presetIds.has(preset.id)) {
-      base.presets.push(preset);
-      presetIds.add(preset.id);
-    }
-  }
-
-  const samplePaths = new Set(base.samples.map((sample) => sample.path));
-  for (const sample of Array.isArray(fallback?.samples) ? fallback.samples : []) {
-    if (!samplePaths.has(sample.path)) {
-      base.samples.push(sample);
-      samplePaths.add(sample.path);
-    }
-  }
-
-  const voiceNames = new Set(base.voices);
-  for (const preset of base.presets) {
-    if (preset?.id && !voiceNames.has(preset.id)) {
-      base.voices.push(preset.id);
-      voiceNames.add(preset.id);
-    }
-  }
-
-  base.voices.sort((left, right) => left.localeCompare(right));
-  base.presets.sort((left, right) => left.id.localeCompare(right.id));
-  base.samples.sort((left, right) => left.id.localeCompare(right.id));
-  return base;
-}
 
 async function loadHealth() {
   try {
@@ -90,17 +53,13 @@ async function syncVoices() {
     return;
   }
   try {
-    const [catalog, fallbackCatalog] = await Promise.all([
-      fetchVoices(model.id),
-      fetchWebUiVoiceCatalog(model.id).catch(() => ({ voices: [], presets: [], samples: [] })),
-    ]);
-    const mergedCatalog = mergeVoiceCatalogs(catalog, fallbackCatalog);
-    setVoiceCatalog(mergedCatalog);
+    const catalog = await fetchVoices(model.id);
+    setVoiceCatalog(catalog);
     syncTtsFamilyForm();
     logEvent(
-      `Loaded ${mergedCatalog.voices?.length ?? 0} voice option(s), ` +
-      `${mergedCatalog.presets?.length ?? 0} preset voice(s), and ` +
-      `${mergedCatalog.samples?.length ?? 0} sample voice(s) for ${model.id}.`
+      `Loaded ${catalog.voices?.length ?? 0} voice option(s), ` +
+      `${catalog.presets?.length ?? 0} preset voice(s), and ` +
+      `${catalog.samples?.length ?? 0} sample voice(s) for ${model.id}.`
     );
   } catch (error) {
     setVoiceCatalog({ voices: [], presets: [], samples: [] });
@@ -199,7 +158,7 @@ function attachEvents() {
     const model = getSelectedModel();
     const draft = readCurrentFamilyDraft();
     if (action === "add-speaker") {
-      draft.speakers.push({ source: "server", serverValue: "", uploadFile: null });
+      draft.speakers.push({ source: "sample", serverValue: "", uploadFile: null });
     }
     if (action === "remove-speaker") {
       const index = Number(event.target.dataset.index);

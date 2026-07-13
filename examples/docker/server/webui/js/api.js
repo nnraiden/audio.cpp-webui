@@ -3,7 +3,7 @@ import { API_BASE } from "./config.js";
 function normalizeFetchError(error) {
   if (error instanceof TypeError) {
     return new Error(
-      `Request to ${API_BASE} failed. Check that the local Web UI proxy is running and that it can reach the audio.cpp backend.`
+      `Request to ${API_BASE || "same-origin backend"} failed. Check that the audio.cpp server is reachable.`
     );
   }
   return error;
@@ -49,19 +49,6 @@ export async function fetchVoices(modelId) {
   let response;
   try {
     response = await fetch(`${API_BASE}/v1/audio/voices?model=${encodeURIComponent(modelId)}`);
-  } catch (error) {
-    throw normalizeFetchError(error);
-  }
-  if (!response.ok) {
-    throw new Error(await parseError(response));
-  }
-  return response.json();
-}
-
-export async function fetchWebUiVoiceCatalog(modelId) {
-  let response;
-  try {
-    response = await fetch(`/__webui/voice-catalog?model=${encodeURIComponent(modelId)}`);
   } catch (error) {
     throw normalizeFetchError(error);
   }

@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "description": "Separate web UI for testing audiocpp models through an app-local proxy.",
   "scripts": {
-    "start": "node server.js"
+    "lint": "npx --yes eslint@9 .",
+    "start": "node server.js",
+    "test": "node test/smoke.cjs"
   }
 }

@@ -6,7 +6,6 @@ const ROOT = __dirname;
 const HOST = process.env.WEBUI_HOST || "127.0.0.1";
 const PORT = Number(process.env.WEBUI_PORT || 3000);
 const API_ORIGIN = process.env.AUDIOCPP_API_ORIGIN || "http://127.0.0.1:8880";
-const SERVER_CONFIG_PATH = process.env.AUDIOCPP_SERVER_CONFIG || path.resolve(ROOT, "..", "server.json");
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -24,65 +23,6 @@ function sendJson(res, status, payload) {
     "Content-Length": Buffer.byteLength(body),
   });
   res.end(body);
-}
-
-function readServerConfig() {
-  try {
-    const text = fs.readFileSync(SERVER_CONFIG_PATH, "utf8");
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-function resolveConfigPath(modelPath, candidatePath) {
-  if (typeof candidatePath !== "string" || candidatePath.length === 0) {
-    return null;
-  }
-  return path.isAbsolute(candidatePath)
-    ? candidatePath
-    : path.resolve(modelPath, candidatePath);
-}
-
-function listWavSamples(basePath) {
-  if (!basePath) {
-    return [];
-  }
-  try {
-    return fs.readdirSync(basePath, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && path.extname(entry.name).toLowerCase() === ".wav")
-      .map((entry) => ({
-        id: path.basename(entry.name, path.extname(entry.name)),
-        path: path.join(basePath, entry.name),
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id));
-  } catch {
-    return [];
-  }
-}
-
-function loadVoiceCatalogFromConfig(modelId) {
-  const config = readServerConfig();
-  const model = config?.models?.find((item) => item?.id === modelId);
-  if (!model) {
-    return { presets: [], samples: [] };
-  }
-
-  const modelPath = typeof model.path === "string"
-    ? (path.isAbsolute(model.path) ? model.path : path.resolve(path.dirname(SERVER_CONFIG_PATH), model.path))
-    : path.dirname(SERVER_CONFIG_PATH);
-  const presetEntries = Object.entries(model.voice_presets || {})
-    .map(([id, preset]) => ({
-      id,
-      voice_id: typeof preset?.voice_id === "string" ? preset.voice_id : null,
-      voice_ref: resolveConfigPath(modelPath, preset?.voice_ref),
-      reference_text: typeof preset?.reference_text === "string" ? preset.reference_text : null,
-      is_default: model.default_voice_preset === id,
-    }))
-    .sort((a, b) => a.id.localeCompare(b.id));
-  const samples = listWavSamples(resolveConfigPath(modelPath, model.voice_samples_base));
-
-  return { presets: presetEntries, samples };
 }
 
 function safeJoin(root, requestPath) {
@@ -126,7 +66,7 @@ function serveFile(req, res, requestPath) {
 }
 
 function proxyRequest(req, res) {
-  const upstreamUrl = new URL(req.url.replace(/^\/api/, ""), API_ORIGIN);
+  const upstreamUrl = new URL(req.url, API_ORIGIN);
   const headers = { ...req.headers };
   delete headers.host;
   headers.origin = API_ORIGIN;
@@ -160,22 +100,21 @@ const server = http.createServer((req, res) => {
   }
   const requestUrl = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
 
-  if (requestUrl.pathname === "/__webui/config") {
-    sendJson(res, 200, { apiOrigin: API_ORIGIN });
-    return;
-  }
-
-  if (requestUrl.pathname === "/__webui/voice-catalog") {
-    sendJson(res, 200, loadVoiceCatalogFromConfig(requestUrl.searchParams.get("model")));
-    return;
-  }
-
-  if (requestUrl.pathname.startsWith("/api/")) {
+  if (requestUrl.pathname === "/health" || requestUrl.pathname === "/v1" || requestUrl.pathname.startsWith("/v1/")) {
     proxyRequest(req, res);
     return;
   }
 
   serveFile(req, res, requestUrl.pathname);
+});
+
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(`Web UI failed to bind ${HOST}:${PORT} because the address is already in use.`);
+    process.exit(1);
+  }
+  console.error(`Web UI server error: ${error?.message ?? String(error)}`);
+  process.exit(1);
 });
 
 server.listen(PORT, HOST, () => {

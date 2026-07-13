@@ -34,15 +34,15 @@ function makeServerVoiceOptions(voiceCatalog) {
 }
 
 function makeSampleOptions(voiceCatalog) {
-  const catalog = normalizeCatalog(voiceCatalog);
-  if (catalog.samples.length > 0) {
-    return catalog.samples.map((sample) => ({
-      id: sample.id,
-      value: sample.path,
-      label: sample.id,
-    }));
-  }
-  return catalog.presets
+  return normalizeCatalog(voiceCatalog).samples.map((sample) => ({
+    id: sample.id,
+    value: sample.path,
+    label: sample.id,
+  }));
+}
+
+function makePresetVoiceRefOptions(voiceCatalog) {
+  return normalizeCatalog(voiceCatalog).presets
     .filter((preset) => preset.voice_ref)
     .map((preset) => ({
       id: preset.id,
@@ -86,16 +86,25 @@ function renderPromptField(spec, draft) {
 
 function renderSpeakerRows(draft, voiceCatalog) {
   const selectableSamples = makeSampleOptions(voiceCatalog);
-  const helper = selectableSamples.length > 0
-    ? "Choose either a server-known sample or a local WAV for each speaker. Speaker order maps directly to Speaker 1, Speaker 2, and so on."
+  const presetSamples = makePresetVoiceRefOptions(voiceCatalog);
+  const helper = (selectableSamples.length > 0 || presetSamples.length > 0)
+    ? "Choose a shared WAV sample, a model preset, or a local WAV for each speaker. Speaker order maps directly to Speaker 1, Speaker 2, and so on."
     : "No server-known WAV references were exposed for this model. Upload local WAVs for each speaker.";
 
   const rows = draft.speakers.map((speaker, index) => {
-    const serverField = `
-      <label class="field speaker-field ${speaker.source === "server" ? "" : "hidden"}" data-visibility="speaker-server" data-index="${index}">
-        <span>Server Sample</span>
-        <select data-role="speaker-server-value" data-index="${index}">
+    const sampleField = `
+      <label class="field speaker-field ${speaker.source === "sample" ? "" : "hidden"}" data-visibility="speaker-sample" data-index="${index}">
+        <span>Shared WAV Sample</span>
+        <select data-role="speaker-sample-value" data-index="${index}">
           ${renderSelectOptions(selectableSamples, speaker.serverValue ?? "", "Select sample")}
+        </select>
+      </label>
+    `;
+    const presetField = `
+      <label class="field speaker-field ${speaker.source === "preset" ? "" : "hidden"}" data-visibility="speaker-preset" data-index="${index}">
+        <span>Preset Voice</span>
+        <select data-role="speaker-preset-value" data-index="${index}">
+          ${renderSelectOptions(presetSamples, speaker.serverValue ?? "", "Select preset")}
         </select>
       </label>
     `;
@@ -113,11 +122,13 @@ function renderSpeakerRows(draft, voiceCatalog) {
           <label class="field speaker-source-field">
             <span>Speaker ${index + 1}</span>
             <select data-role="speaker-source" data-index="${index}">
-              <option value="server" ${speaker.source === "server" ? "selected" : ""}>Server Sample</option>
+              <option value="sample" ${speaker.source === "sample" ? "selected" : ""}>Shared WAV Sample</option>
+              <option value="preset" ${speaker.source === "preset" ? "selected" : ""}>Preset Voice</option>
               <option value="upload" ${speaker.source === "upload" ? "selected" : ""}>Upload WAV</option>
             </select>
           </label>
-          ${serverField}
+          ${sampleField}
+          ${presetField}
           ${uploadField}
         </div>
         <button class="secondary-button speaker-remove-button" type="button" data-action="remove-speaker" data-index="${index}">Remove</button>
@@ -139,6 +150,7 @@ function renderSpeakerRows(draft, voiceCatalog) {
 
 function renderPocketCloneMode(draft, voiceCatalog) {
   const uploadName = draft.cloneFile?.name ?? "No file selected";
+  const sampleOptions = makeSampleOptions(voiceCatalog);
   return `
     <div class="segmented-control" role="radiogroup" aria-label="PocketTTS voice mode">
       <label class="segment-option">
@@ -153,11 +165,14 @@ function renderPocketCloneMode(draft, voiceCatalog) {
     <div class="field-stack ${draft.mode === "voice" ? "" : "hidden"}" data-visibility="pocket-voice-mode">
       ${renderVoiceSelect("Voice", makeServerVoiceOptions(voiceCatalog), draft.voice, "Default")}
     </div>
-    <label class="field ${draft.mode === "clone" ? "" : "hidden"}" data-visibility="pocket-clone-mode">
-      <span>Reference WAV</span>
-      <input data-role="pocket-clone-file" type="file" accept=".wav,audio/wav">
-      <small>${escapeHtml(uploadName)}</small>
-    </label>
+    <div class="field-stack ${draft.mode === "clone" ? "" : "hidden"}" data-visibility="pocket-clone-mode">
+      ${renderVoiceSelect("Shared WAV Sample", sampleOptions, draft.cloneSample, "Select shared sample")}
+      <label class="field">
+        <span>Or Upload Local WAV</span>
+        <input data-role="pocket-clone-file" type="file" accept=".wav,audio/wav">
+        <small>${escapeHtml(uploadName)}</small>
+      </label>
+    </div>
   `;
 }
 
@@ -177,8 +192,8 @@ const FAMILY_SPECS = {
       return {
         prompt: VIBEVOICE_TEXT,
         speakers: [
-          { source: "server", serverValue: "", uploadFile: null },
-          { source: "server", serverValue: "", uploadFile: null },
+          { source: "sample", serverValue: "", uploadFile: null },
+          { source: "sample", serverValue: "", uploadFile: null },
         ],
       };
     },
@@ -187,7 +202,7 @@ const FAMILY_SPECS = {
       draft.prompt = typeof draft.prompt === "string" ? draft.prompt : VIBEVOICE_TEXT;
       draft.speakers = Array.isArray(draft.speakers) && draft.speakers.length > 0
         ? draft.speakers.map((speaker) => ({
-          source: speaker?.source === "upload" ? "upload" : "server",
+          source: speaker?.source === "upload" || speaker?.source === "preset" ? speaker.source : "sample",
           serverValue: typeof speaker?.serverValue === "string" ? speaker.serverValue : "",
           uploadFile: speaker?.uploadFile instanceof File ? speaker.uploadFile : null,
         }))
@@ -202,9 +217,11 @@ const FAMILY_SPECS = {
       draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
       draft.speakers = draft.speakers.map((speaker, index) => {
         const source = root.querySelector(`[data-role="speaker-source"][data-index="${index}"]`)?.value ?? speaker.source;
-        const serverValue = root.querySelector(`[data-role="speaker-server-value"][data-index="${index}"]`)?.value ?? speaker.serverValue;
+        const serverValue = source === "preset"
+          ? (root.querySelector(`[data-role="speaker-preset-value"][data-index="${index}"]`)?.value ?? speaker.serverValue)
+          : (root.querySelector(`[data-role="speaker-sample-value"][data-index="${index}"]`)?.value ?? speaker.serverValue);
         return {
-          source: source === "upload" ? "upload" : "server",
+          source: source === "upload" || source === "preset" ? source : "sample",
           serverValue,
           uploadFile: speaker.uploadFile ?? null,
         };
@@ -260,7 +277,7 @@ const FAMILY_SPECS = {
         speaker.source === "upload" ? !speaker.uploadFile : !speaker.serverValue
       ));
       if (missingSpeaker) {
-        throw new Error("Each VibeVoice speaker row needs either a server sample or a local WAV.");
+        throw new Error("Each VibeVoice speaker row needs a shared sample, preset, or local WAV.");
       }
     },
   },
@@ -279,6 +296,7 @@ const FAMILY_SPECS = {
         prompt: DEFAULT_TEXT,
         mode: "voice",
         voice: "",
+        cloneSample: "",
         cloneFile: null,
       };
     },
@@ -287,6 +305,7 @@ const FAMILY_SPECS = {
       draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
       draft.mode = draft.mode === "clone" ? "clone" : "voice";
       draft.voice = typeof draft.voice === "string" ? draft.voice : "";
+      draft.cloneSample = typeof draft.cloneSample === "string" ? draft.cloneSample : "";
       draft.cloneFile = draft.cloneFile instanceof File ? draft.cloneFile : null;
       return draft;
     },
@@ -301,6 +320,7 @@ const FAMILY_SPECS = {
       draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
       draft.mode = root.querySelector('[data-role="pocket-mode"]:checked')?.value === "clone" ? "clone" : "voice";
       draft.voice = root.querySelector('[data-role="voice-select"]')?.value ?? draft.voice;
+      draft.cloneSample = root.querySelector('[data-visibility="pocket-clone-mode"] [data-role="voice-select"]')?.value ?? draft.cloneSample;
       return draft;
     },
     serializeRequest(model, draft, shared) {
@@ -311,6 +331,18 @@ const FAMILY_SPECS = {
             model: model.id,
             input: draft.prompt.trim(),
             ...(draft.voice ? { voice: draft.voice } : {}),
+            ...shared,
+          },
+        };
+      }
+
+      if (draft.cloneSample) {
+        return {
+          transport: "json",
+          payload: {
+            model: model.id,
+            input: draft.prompt.trim(),
+            voice_ref: draft.cloneSample,
             ...shared,
           },
         };
@@ -334,8 +366,8 @@ const FAMILY_SPECS = {
       if (!draft.prompt.trim()) {
         throw new Error("Enter text before submitting.");
       }
-      if (draft.mode === "clone" && !draft.cloneFile) {
-        throw new Error("Choose a WAV file for PocketTTS clone mode.");
+      if (draft.mode === "clone" && !draft.cloneSample && !draft.cloneFile) {
+        throw new Error("Choose a shared WAV sample or upload a WAV file for PocketTTS clone mode.");
       }
     },
   },
@@ -416,6 +448,9 @@ export function updateFamilyDraftFile(model, draft, role, index, file) {
   const nextDraft = ensureFamilyDraft(model, draft);
   const spec = getFamilySpec(model);
   if (spec === FAMILY_SPECS.pocket_tts && role === "pocket-clone-file") {
+    if (file) {
+      nextDraft.cloneSample = "";
+    }
     nextDraft.cloneFile = file ?? null;
     return nextDraft;
   }
