@@ -10,6 +10,7 @@ export const elements = {
   modelMode: document.querySelector("#model-mode"),
   modelSummary: document.querySelector("#model-summary"),
   ttsPanel: document.querySelector("#tts-panel"),
+  ttsPanelTools: document.querySelector("#tts-panel-tools"),
   ttsForm: document.querySelector("#tts-form"),
   ttsFamilyFields: document.querySelector("#tts-family-fields"),
   ttsSeed: document.querySelector("#tts-seed"),

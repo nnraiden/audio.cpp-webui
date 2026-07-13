@@ -1,6 +1,6 @@
 import { elements } from "./dom.js";
 import { getSelectedModel, state } from "./state.js";
-import { renderFamilyFields } from "./ttsFamilies.js";
+import { renderFamilyFields, renderFamilyPanelTools } from "./ttsFamilies.js";
 
 function renderMetricItems(metrics) {
   return Object.entries(metrics)
@@ -46,6 +46,7 @@ export function renderModels() {
   const isAsr = model?.task === "asr";
   elements.ttsPanel.classList.toggle("hidden", !isTts);
   elements.asrPanel.classList.toggle("hidden", !isAsr);
+  elements.ttsPanelTools.innerHTML = isTts ? renderFamilyPanelTools(model) : "";
 }
 
 export function renderTtsFamilyForm(model, draft) {

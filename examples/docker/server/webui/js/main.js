@@ -1,7 +1,7 @@
 import { fetchHealth, fetchModels, fetchVoices, synthesizeSpeech, transcribeAudio } from "./api.js";
 import { elements } from "./dom.js";
 import { clearOutputs, logEvent, renderAsrResult, renderHealth, renderHealthError, renderModels, renderTtsFamilyForm, renderTtsResult } from "./ui.js";
-import { getFamilyDraft, getSelectedModel, setFamilyDraft, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog } from "./state.js";
+import { getFamilyDraft, getSelectedModel, setFamilyDraft, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog, state } from "./state.js";
 import { buildSpeechRequest, ensureFamilyDraft, readFamilyDraftFromDom, updateFamilyDraftFile } from "./ttsFamilies.js";
 
 async function loadHealth() {
@@ -94,7 +94,7 @@ async function handleTtsSubmit(event) {
 
   logEvent(`Submitting TTS request for ${model.id}.`);
   try {
-    const result = await synthesizeSpeech(buildSpeechRequest(model, draft, sharedFields));
+    const result = await synthesizeSpeech(buildSpeechRequest(model, draft, sharedFields, state.voiceCatalog));
     const audioUrl = URL.createObjectURL(result.blob);
     setTtsAudioUrl(audioUrl);
     renderTtsResult({ audioUrl, metrics: result.metrics });
@@ -193,6 +193,18 @@ function attachEvents() {
         readCurrentFamilyDraft(),
         "speaker-upload-file",
         Number(event.target.dataset.index),
+        event.target.files?.[0] ?? null
+      );
+      setFamilyDraft(currentFamilyKey(), draft);
+      syncTtsFamilyForm();
+      return;
+    }
+    if (event.target.dataset.role === "omnivoice-upload-file") {
+      const draft = updateFamilyDraftFile(
+        getSelectedModel(),
+        readCurrentFamilyDraft(),
+        "omnivoice-upload-file",
+        null,
         event.target.files?.[0] ?? null
       );
       setFamilyDraft(currentFamilyKey(), draft);

@@ -6,6 +6,6 @@
   "scripts": {
     "lint": "npx --yes eslint@9 .",
     "start": "node server.js",
-    "test": "node test/smoke.cjs"
+    "test": "node test/smoke.cjs && node --experimental-default-type=module test/ttsFamilies.test.js"
   }
 }
