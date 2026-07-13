@@ -29,7 +29,6 @@ struct ServerModelConfig {
     std::unordered_map<std::string, std::string> load_options;
     std::unordered_map<std::string, std::string> session_options;
     std::unordered_map<std::string, VoicePreset> voice_presets;
-    std::optional<std::filesystem::path> voice_samples_base;
     std::optional<VoicePreset> default_voice_preset;
     std::optional<std::string> default_voice_preset_id;
 };
@@ -42,6 +41,8 @@ struct ServerConfig {
     int threads = 1;
     bool lazy_load = false;
     std::optional<std::filesystem::path> model_spec_override;
+    std::optional<std::filesystem::path> voice_samples_base;
+    std::optional<std::filesystem::path> webui_root;
     std::vector<ServerModelConfig> models;
 };
 

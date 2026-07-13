@@ -75,6 +75,8 @@ private:
     HttpResponse handle_generic_run(const std::string & body_text);
     HttpResponse handle_generic_stream(const std::string & body_text);
     HttpResponse handle_voices(const HttpRequest & request) const;
+    HttpResponse handle_webui_request(const HttpRequest & request) const;
+    std::vector<std::pair<std::string, std::string>> shared_voice_samples() const;
     std::string models_json() const;
 
     ServerConfig config_;

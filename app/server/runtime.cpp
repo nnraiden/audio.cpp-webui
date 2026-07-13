@@ -96,6 +96,60 @@ std::string lowercase_ascii(std::string value) {
     return value;
 }
 
+bool path_has_api_prefix(const std::string & path) {
+    return path == "/v1" || path.rfind("/v1/", 0) == 0;
+}
+
+std::string mime_type_for_path(const std::filesystem::path & path) {
+    const std::string extension = lowercase_ascii(path.extension().string());
+    if (extension == ".css") {
+        return "text/css; charset=utf-8";
+    }
+    if (extension == ".html") {
+        return "text/html; charset=utf-8";
+    }
+    if (extension == ".js") {
+        return "text/javascript; charset=utf-8";
+    }
+    if (extension == ".json") {
+        return "application/json; charset=utf-8";
+    }
+    if (extension == ".svg") {
+        return "image/svg+xml";
+    }
+    if (extension == ".txt") {
+        return "text/plain; charset=utf-8";
+    }
+    if (extension == ".wav") {
+        return "audio/wav";
+    }
+    return "application/octet-stream";
+}
+
+std::optional<std::filesystem::path> safe_static_path(
+    const std::filesystem::path & root,
+    std::string_view request_path) {
+    std::filesystem::path relative;
+    for (const auto & part : std::filesystem::path(request_path).relative_path()) {
+        if (part == "." || part.empty()) {
+            continue;
+        }
+        if (part == "..") {
+            return std::nullopt;
+        }
+        relative /= part;
+    }
+    return root / relative;
+}
+
+std::optional<std::string> read_binary_file(const std::filesystem::path & path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+
 std::string voice_samples_option_string(const Value & value) {
     if (value.is_string()) {
         return value.as_string();
@@ -676,6 +730,9 @@ HttpResponse ServerState::handle(const HttpRequest & request) {
     if (request.method == "POST" && request.path == "/v1/tasks/stream") {
         return handle_generic_stream(request.body);
     }
+    if (request.method == "GET" && !path_has_api_prefix(request.path)) {
+        return handle_webui_request(request);
+    }
     return error_response(404, "unknown endpoint: " + request.path, "not_found");
 }
 
@@ -1235,9 +1292,9 @@ HttpResponse ServerState::handle_generic_stream(const std::string & body_text) {
 // instead of guessing generic names like "alloy"/"nova".
 HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
     const std::string model_id = query_param(request.query, "model");
+    const auto sample_entries = shared_voice_samples();
     std::vector<std::string> voices;
     std::vector<std::string> preset_names;
-    std::vector<std::pair<std::string, std::string>> sample_entries;
 
     const auto it = model_index_.find(model_id);
     if (it != model_index_.end()) {
@@ -1255,21 +1312,8 @@ HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
                 }
             }
         }
-        if (model.config.voice_samples_base.has_value() && std::filesystem::is_directory(*model.config.voice_samples_base, ec)) {
-            for (const auto & entry : std::filesystem::directory_iterator(*model.config.voice_samples_base, ec)) {
-                if (!entry.is_regular_file()) {
-                    continue;
-                }
-                const std::string extension = lowercase_ascii(entry.path().extension().string());
-                if (extension != ".wav") {
-                    continue;
-                }
-                sample_entries.emplace_back(entry.path().stem().string(), entry.path().string());
-            }
-        }
 
         std::sort(preset_names.begin(), preset_names.end());
-        std::sort(sample_entries.begin(), sample_entries.end());
 
         std::ostringstream presets_json;
         for (size_t i = 0; i < preset_names.size(); ++i) {
@@ -1327,6 +1371,72 @@ HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
         return json_response(out.str());
     }
     return json_response("{\"voices\":[],\"presets\":[],\"samples\":[]}");
+}
+
+HttpResponse ServerState::handle_webui_request(const HttpRequest & request) const {
+    if (!config_.webui_root.has_value()) {
+        return error_response(404, "unknown endpoint: " + request.path, "not_found");
+    }
+
+    const auto & webui_root = *config_.webui_root;
+    std::error_code ec;
+    if (!std::filesystem::is_directory(webui_root, ec)) {
+        return error_response(404, "configured webui_root is unavailable", "not_found");
+    }
+
+    const bool is_root = request.path == "/";
+    const auto requested_path = safe_static_path(webui_root, is_root ? "index.html" : request.path.substr(1));
+    if (!requested_path.has_value()) {
+        return error_response(400, "invalid webui path", "invalid_request");
+    }
+
+    auto file_path = *requested_path;
+    if (std::filesystem::is_directory(file_path, ec)) {
+        file_path /= "index.html";
+    }
+
+    auto body = read_binary_file(file_path);
+    if (!body.has_value()) {
+        if (file_path.has_extension()) {
+            return error_response(404, "webui asset not found: " + request.path, "not_found");
+        }
+        const auto fallback_path = webui_root / "index.html";
+        body = read_binary_file(fallback_path);
+        file_path = fallback_path;
+        if (!body.has_value()) {
+            return error_response(404, "configured webui_root has no index.html", "not_found");
+        }
+    }
+
+    HttpResponse response;
+    response.status = 200;
+    response.content_type = mime_type_for_path(file_path);
+    response.body = std::move(*body);
+    return response;
+}
+
+std::vector<std::pair<std::string, std::string>> ServerState::shared_voice_samples() const {
+    std::vector<std::pair<std::string, std::string>> sample_entries;
+    if (!config_.voice_samples_base.has_value()) {
+        return sample_entries;
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::is_directory(*config_.voice_samples_base, ec)) {
+        return sample_entries;
+    }
+    for (const auto & entry : std::filesystem::directory_iterator(*config_.voice_samples_base, ec)) {
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+        const std::string extension = lowercase_ascii(entry.path().extension().string());
+        if (extension != ".wav") {
+            continue;
+        }
+        sample_entries.emplace_back(entry.path().stem().string(), entry.path().string());
+    }
+    std::sort(sample_entries.begin(), sample_entries.end());
+    return sample_entries;
 }
 
 std::string ServerState::models_json() const {

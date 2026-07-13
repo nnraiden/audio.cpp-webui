@@ -65,6 +65,12 @@ ServerConfig load_server_config(const std::filesystem::path & path) {
     if (const auto * value = root.find("model_spec_override")) {
         config.model_spec_override = resolve_path(base, value->as_string());
     }
+    if (const auto * voice_samples_base = root.find("voice_samples_base")) {
+        config.voice_samples_base = resolve_path(base, voice_samples_base->as_string());
+    }
+    if (const auto * webui_root = root.find("webui_root")) {
+        config.webui_root = resolve_path(base, webui_root->as_string());
+    }
     if (config.port <= 0 || config.port > 65535) {
         throw std::runtime_error("server port must be in 1..65535");
     }
@@ -95,9 +101,6 @@ ServerConfig load_server_config(const std::filesystem::path & path) {
         }
         model.load_options = options_from_object(item.find("load_options"));
         model.session_options = options_from_object(item.find("session_options"));
-        if (const auto * voice_samples_base = item.find("voice_samples_base")) {
-            model.voice_samples_base = resolve_path(base, voice_samples_base->as_string());
-        }
         if (const auto * voice_presets = item.find("voice_presets")) {
             if (!voice_presets->is_object()) {
                 throw std::runtime_error("voice_presets for model " + model.id + " must be an object");
