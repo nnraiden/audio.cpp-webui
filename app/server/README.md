@@ -22,6 +22,7 @@ cat > server.json <<'JSON'
   "device": 0,
   "threads": 1,
   "lazy_load": true,
+  "webui_root": "examples/docker/server/webui",
   "models": [
     {
       "id": "pocket-tts",
@@ -70,6 +71,8 @@ the per-model value takes precedence. The equivalent command-line option is
 Set top-level `"backend"` to `"cuda"`, `"cpu"`, `"vulkan"`, or `"metal"`. CUDA is the optimized path for audio.cpp; CPU, Vulkan, and Metal are intended for portability and testing when the binary is built with that backend, but performance and model coverage may be lower. The server prints this expectation-setting message when a non-CUDA backend is selected.
 
 Set top-level `"lazy_load": true` to register all configured model ids at startup but defer each model's framework load and session creation until its first request. A model can override the default with `"lazy": true` or `"lazy": false`.
+
+Set top-level `webui_root` to serve the example Web UI from the same origin as the API. With that set, `GET /` serves `index.html`, static assets are served from that directory, and unknown non-`/v1` GET paths fall back to `index.html` for client-side routing.
 
 > [!WARNING]
 > Lazy loading does not unload models after a request. Once a model is first used, the server keeps that model and session in memory for reuse until the server exits.

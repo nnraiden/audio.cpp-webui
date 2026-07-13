@@ -1,5 +1,15 @@
 # audio.cpp
 
+This fork is maintained for my own local use. It stays close to upstream `audio.cpp`, adds a lightweight built-in Web UI path, and does not aim to become a broad downstream distribution with a separate product roadmap.
+
+For the Web UI, set `"webui_root"` in `server.json`, start `audiocpp_server`, and open the server root in your browser. Docker example:
+
+```bash
+docker compose -f examples/docker/server/compose.podman.yml up --build
+```
+
+Then open `http://127.0.0.1:8880/`.
+
 `audio.cpp` is a high-performance C++ audio inference framework built on top of `ggml`, designed to make modern local audio models practical, portable, and fast.
 
 Tired of juggling a dozen Conda environments, hundreds of Python packages, and dependency conflicts just to try a few audio models? audio.cpp gives those paths a shared native runtime instead.
