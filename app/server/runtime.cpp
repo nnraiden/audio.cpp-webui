@@ -172,6 +172,26 @@ std::string voice_samples_option_string(const Value & value) {
     return out.str();
 }
 
+std::optional<std::string> read_sibling_transcript_text(const std::filesystem::path & wav_path) {
+    const auto transcript_path = wav_path.parent_path() / (wav_path.stem().string() + ".txt");
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(transcript_path, ec)) {
+        return std::nullopt;
+    }
+
+    std::ifstream input(transcript_path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+
+    std::ostringstream out;
+    out << input.rdbuf();
+    if (!input.good() && !input.eof()) {
+        return std::nullopt;
+    }
+    return out.str();
+}
+
 std::vector<uint8_t> encode_pcm16_wav(const engine::runtime::AudioBuffer & audio) {
     if (audio.sample_rate <= 0) {
         throw std::runtime_error("audio output sample rate must be positive");
@@ -871,6 +891,9 @@ engine::runtime::TaskRequest ServerState::build_speech_request(const LoadedModel
     add_option_from_json(request.options, body, "repetition_penalty", "repetition_penalty");
     add_option_from_json(request.options, body, "guidance_scale", "guidance_scale");
     add_option_from_json(request.options, body, "num_inference_steps", "num_inference_steps");
+    add_option_from_json(request.options, body, "speed", "speed");
+    add_option_from_json(request.options, body, "audio_chunk_duration_seconds", "audio_chunk_duration");
+    add_option_from_json(request.options, body, "audio_chunk_threshold_seconds", "audio_chunk_threshold");
     if (const auto * value = body.find("instructions")) {
         request.options["instruct"] = value->as_string();
     }
@@ -1352,8 +1375,15 @@ HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
             if (i != 0) {
                 samples_json << ",";
             }
-            samples_json << "{\"id\":" << json_quote(sample_entries[i].first)
-                << ",\"path\":" << json_quote(sample_entries[i].second) << "}";
+            samples_json << "{\"id\":" << json_quote(sample_entries[i].id)
+                << ",\"path\":" << json_quote(sample_entries[i].path)
+                << ",\"transcript_text\":";
+            if (sample_entries[i].transcript_text.has_value()) {
+                samples_json << json_quote(*sample_entries[i].transcript_text);
+            } else {
+                samples_json << "null";
+            }
+            samples_json << "}";
         }
 
         std::sort(voices.begin(), voices.end());
@@ -1415,8 +1445,8 @@ HttpResponse ServerState::handle_webui_request(const HttpRequest & request) cons
     return response;
 }
 
-std::vector<std::pair<std::string, std::string>> ServerState::shared_voice_samples() const {
-    std::vector<std::pair<std::string, std::string>> sample_entries;
+std::vector<ServerState::SharedVoiceSample> ServerState::shared_voice_samples() const {
+    std::vector<SharedVoiceSample> sample_entries;
     if (!config_.voice_samples_base.has_value()) {
         return sample_entries;
     }
@@ -1425,7 +1455,7 @@ std::vector<std::pair<std::string, std::string>> ServerState::shared_voice_sampl
     if (!std::filesystem::is_directory(*config_.voice_samples_base, ec)) {
         return sample_entries;
     }
-    for (const auto & entry : std::filesystem::directory_iterator(*config_.voice_samples_base, ec)) {
+    for (const auto & entry : std::filesystem::recursive_directory_iterator(*config_.voice_samples_base, ec)) {
         if (!entry.is_regular_file()) {
             continue;
         }
@@ -1433,9 +1463,21 @@ std::vector<std::pair<std::string, std::string>> ServerState::shared_voice_sampl
         if (extension != ".wav") {
             continue;
         }
-        sample_entries.emplace_back(entry.path().stem().string(), entry.path().string());
+        auto relative = std::filesystem::relative(entry.path(), *config_.voice_samples_base, ec);
+        if (ec) {
+            relative = entry.path().filename();
+            ec.clear();
+        }
+        relative.replace_extension();
+        sample_entries.push_back(SharedVoiceSample{
+            relative.generic_string(),
+            entry.path().string(),
+            read_sibling_transcript_text(entry.path()),
+        });
     }
-    std::sort(sample_entries.begin(), sample_entries.end());
+    std::sort(sample_entries.begin(), sample_entries.end(), [](const SharedVoiceSample & a, const SharedVoiceSample & b) {
+        return a.id < b.id;
+    });
     return sample_entries;
 }
 

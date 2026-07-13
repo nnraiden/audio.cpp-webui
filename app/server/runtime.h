@@ -41,6 +41,12 @@ private:
         std::mutex mutex;
     };
 
+    struct SharedVoiceSample {
+        std::string id;
+        std::string path;
+        std::optional<std::string> transcript_text;
+    };
+
     void load_models();
     LoadedModel::RuntimeVoicePreset load_runtime_voice_preset(const ServerModelConfig::VoicePreset & preset) const;
     void load_voice_presets(LoadedModel & model) const;
@@ -76,7 +82,7 @@ private:
     HttpResponse handle_generic_stream(const std::string & body_text);
     HttpResponse handle_voices(const HttpRequest & request) const;
     HttpResponse handle_webui_request(const HttpRequest & request) const;
-    std::vector<std::pair<std::string, std::string>> shared_voice_samples() const;
+    std::vector<SharedVoiceSample> shared_voice_samples() const;
     std::string models_json() const;
 
     ServerConfig config_;
