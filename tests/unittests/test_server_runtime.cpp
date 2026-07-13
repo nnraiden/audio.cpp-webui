@@ -51,13 +51,18 @@ std::filesystem::path write_config(
 void test_voices_endpoint_uses_shared_samples_and_model_presets() {
     const auto root = make_temp_root();
     const auto shared_dir = root / "voices" / "shared";
+    const auto nested_shared_dir = shared_dir / "vibevoice";
     const auto model_dir = root / "models" / "pocket-tts";
     const auto embeddings_dir = model_dir / "embeddings";
 
     std::filesystem::create_directories(shared_dir);
+    std::filesystem::create_directories(nested_shared_dir);
     std::filesystem::create_directories(embeddings_dir);
     write_text_file(shared_dir / "alice.wav", "RIFF");
+    write_text_file(shared_dir / "alice.txt", "Alice transcript");
     write_text_file(shared_dir / "bob.WAV", "RIFF");
+    write_text_file(nested_shared_dir / "speaker-01.wav", "RIFF");
+    write_text_file(nested_shared_dir / "speaker-01.txt", "Nested transcript");
     write_text_file(shared_dir / "ignore.txt", "not audio");
     write_text_file(embeddings_dir / "marius.safetensors", "stub");
 
@@ -105,13 +110,19 @@ void test_voices_endpoint_uses_shared_samples_and_model_presets() {
     require(engine::io::json::require_string(presets[0], "id") == "narrator", "preset id should match config");
     require(engine::io::json::require_string(presets[0], "voice_id") == "cosette", "preset voice_id should match config");
     require(presets[0].require("voice_ref").is_null(), "voice_ref should be null for voice_id-only preset");
+    require(presets[0].require("reference_text").is_null(), "reference_text should stay null when unset");
 
     const auto & samples = payload.require("samples").as_array();
-    require(samples.size() == 2, "samples should come from shared voice_samples_base");
+    require(samples.size() == 3, "samples should come from shared voice_samples_base recursively");
     require(engine::io::json::require_string(samples[0], "id") == "alice", "first shared wav should be listed");
     require(engine::io::json::require_string(samples[0], "path") == (shared_dir / "alice.wav").string(), "first shared wav path should match");
+    require(engine::io::json::require_string(samples[0], "transcript_text") == "Alice transcript", "sibling transcript text should be exposed");
     require(engine::io::json::require_string(samples[1], "id") == "bob", "wav scan should be case-insensitive");
     require(engine::io::json::require_string(samples[1], "path") == (shared_dir / "bob.WAV").string(), "second shared wav path should match");
+    require(samples[1].require("transcript_text").is_null(), "missing sibling transcript should be null");
+    require(engine::io::json::require_string(samples[2], "id") == "vibevoice/speaker-01", "nested shared wav should use a relative id");
+    require(engine::io::json::require_string(samples[2], "path") == (nested_shared_dir / "speaker-01.wav").string(), "nested shared wav path should match");
+    require(engine::io::json::require_string(samples[2], "transcript_text") == "Nested transcript", "nested sibling transcript should be exposed");
 }
 
 minitts::server::ServerState make_webui_state(const std::filesystem::path & root) {
