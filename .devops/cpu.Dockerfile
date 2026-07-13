@@ -47,6 +47,7 @@ RUN cmake -S . -B build \
 RUN mkdir -p /app/full && \
     cp build/bin/audiocpp_cli build/bin/audiocpp_server \
        build/bin/model_perf build/bin/miocodec_wavlm_parity /app/full/ && \
+    cp -r examples/docker/server/webui /app/full/webui && \
     cp .devops/entrypoint.sh /app/full/entrypoint.sh && \
     chmod +x /app/full/entrypoint.sh
 

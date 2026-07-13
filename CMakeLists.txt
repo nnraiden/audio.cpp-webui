@@ -900,6 +900,41 @@ if (ENGINE_BUILD_TESTS)
         NAME server_config_test
         COMMAND server_config_test
     )
+
+    add_executable(server_runtime_test
+        tests/unittests/test_server_runtime.cpp
+        app/server/config.cpp
+        app/server/http.cpp
+        app/server/multipart.cpp
+        app/server/runtime.cpp
+        app/cli/args.cpp
+        app/cli/request.cpp
+        app/streaming/streaming.cpp
+    )
+    target_include_directories(server_runtime_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/app/server)
+    target_link_libraries(server_runtime_test PRIVATE engine_runtime ggml)
+    if (WIN32)
+        target_link_libraries(server_runtime_test PRIVATE ws2_32)
+    endif()
+    if (ENGINE_ENABLE_OPENMP)
+        target_link_libraries(server_runtime_test PRIVATE OpenMP::OpenMP_CXX)
+    endif()
+
+    add_test(
+        NAME server_runtime_test
+        COMMAND server_runtime_test
+    )
+
+    find_program(NODE_EXECUTABLE node)
+    find_program(NPM_EXECUTABLE npm)
+    if (NODE_EXECUTABLE AND NPM_EXECUTABLE)
+        add_test(
+            NAME webui_smoke_test
+            COMMAND ${NPM_EXECUTABLE} test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/examples/docker/server/webui
+        )
+        set_tests_properties(webui_smoke_test PROPERTIES TIMEOUT 30)
+    endif()
 endif()
 
 if (ENGINE_BUILD_EXAMPLES)
