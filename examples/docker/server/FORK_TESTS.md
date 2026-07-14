@@ -72,16 +72,11 @@ The Docker smoke test verifies:
 
 ## Config Files
 
-`server.json.example` is tracked in git and mounted by compose by default.
-To use your own config, create `server.personal.json` and mount it:
-
-```yaml
-volumes:
-  - ./server.json.example:/app/server.json:ro,Z
-  - ./server.personal.json:/app/server.json:rw,Z
-```
-
-The last mount wins (overlay). `server.personal.json` is gitignored.
+`server.json.example` is tracked in git. Copy it to `server.personal.json`
+for your own config (gitignored). Update your compose to mount
+`./server.personal.json:/app/server.json:ro,Z` instead of
+`./server.json:/app/server.json:ro,Z` to avoid conflicts when upstream
+deletes or changes their `server.json`.
 
 ## Failure Hints
 
