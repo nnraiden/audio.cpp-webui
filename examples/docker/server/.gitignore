@@ -1,3 +1,4 @@
 output/
 compose.podman.yml
 server.json
+server.personal.json

@@ -70,6 +70,19 @@ The Docker smoke test verifies:
 - `GET /v1/models` succeeds
 - `GET /v1/audio/voices?model=<id>` still returns JSON when a probe model is configured
 
+## Config Files
+
+`server.json.example` is tracked in git and mounted by compose by default.
+To use your own config, create `server.personal.json` and mount it:
+
+```yaml
+volumes:
+  - ./server.json.example:/app/server.json:ro,Z
+  - ./server.personal.json:/app/server.json:rw,Z
+```
+
+The last mount wins (overlay). `server.personal.json` is gitignored.
+
 ## Failure Hints
 
 - C++ test failures usually mean backend config or route behavior drifted.
