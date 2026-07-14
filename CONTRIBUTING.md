@@ -48,7 +48,7 @@ For models with Python references, include parity evidence when practical. For m
 
 Please be prepared to help maintain new model contributions as framework APIs evolve. Keeping model code aligned with the shared framework surface is part of making the implementation useful long term.
 
-## Framework Modules
+## Framework Modules (High Risk)
 
 Framework modules are a high-impact but higher-risk contribution area because the internal framework APIs are still evolving quickly. Changes here can affect many model families at once, so please prefer additive work over modifying behavior that existing models already depend on.
 

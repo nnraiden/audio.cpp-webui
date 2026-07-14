@@ -6,7 +6,12 @@ Tired of juggling a dozen Conda environments, hundreds of Python packages, and d
 
 > [!IMPORTANT]
 > **CUDA performance headline:** multiple TTS paths already run **1.8x-5.0x faster than their Python reference paths** while cutting end-to-end latency by **45%-80%**.
+>
 > **VibeVoice 1.5B:** generates a **93.9-minute podcast in 18.2 minutes** with **10 diffusion steps** and without quantization, running about **5.15x faster than real time**.
+>
+> **Supertonic 3:** generates about **10 hours of audio in 3 minutes** on RTX5090. Up to 200x+ real-time on CUDA, 6x+ real-time on CPU, and 47 ms TTFT in CUDA streaming mode.
+>
+> **Real-world ASR win:** In [TranscrIA benchmark](https://github.com/Martossien/transcria/blob/main/docs/STT_BENCHMARK_REAL_MEETINGS.md) on messy French meeting audio, audio.cpp’s Nemotron 3.5 ASR matched the same WER as other implementations while using about **1/4 of the wall time**. 
 
 It is built for real end-to-end execution rather than one-off model demos: the same runtime powers TTS, voice cloning, voice conversion, ASR, diarization, VAD, source separation, alignment, codec-style models, and higher-level workflows through a common framework surface.
 
@@ -20,6 +25,8 @@ Highlights:
 
 <p><strong><span style="font-size:1.1em;">The goal of the framework is to provide highly optimized, reusable building blocks for audio-related models, so new model integrations can be brought up faster, shared components can be improved once and benefit many families, and real end-to-end inference paths can stay efficient, maintainable, and portable.</span></strong></p>
 
+audio.cpp would not be moving this quickly without generous contributors bringing in real fixes, new capabilities, and careful polish. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute and for a shout-out to the people already helping shape the project.
+
 > [!TIP]
 > **Contribution focus:** the most helpful contributions right now are improvements to the UI, API server, and pipeline/workflow subsystems. These areas make the existing model surface easier to use, serve, compose, and validate. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 >
@@ -28,7 +35,9 @@ Highlights:
 ## News
 
 > [!IMPORTANT]
-> **2026-07-13:** Five TTS families join the released framework surface: IndexTTS2, Irodori-TTS, MOSS-TTS-Nano, MOSS-TTS-Local, and Supertonic 3. These add expressive Chinese/English TTS, Japanese no-reference/reference/voice-design speech, MOSS local-transformer and nano paths, and very fast preset-voice Supertonic generation.
+> **2026-07-14 - Release 0.3:** This release expands audio.cpp with five new TTS families: IndexTTS2, Irodori-TTS, MOSS-TTS-Nano, MOSS-TTS-Local (thanks to [@justinjohn0306](https://github.com/justinjohn0306)), and Supertonic 3. Chatterbox also gains voice-conversion support, extending the existing TTS/voice-cloning path into a fuller speech workflow.
+>
+> **GGUF support:** audio.cpp now has reusable GGUF loading and conversion support, with tested GGUF paths for multiple ASR and TTS models. Some models can run up to 2× faster with Q8 GGUF, without any parity drift. See [docs/gguf.md](docs/gguf.md) for the current support status. Huge thanks to [@mirek190](https://github.com/mirek190) for driving the core GGUF work and model support forward.
 
 **2026-06-25 to 2026-07-08:** audio.cpp grew from the first released model wave into broad TTS, ASR, music generation, source separation, VAD, diarization, codec, and voice-conversion coverage, with VibeVoice 1.5B/7B, LoRA adapter loading, initial streaming support, and major CUDA Conv1DTransp speedups.
 
@@ -310,7 +319,7 @@ build/bin/audiocpp_cli \
 
 The repository also ships a model manager at `tools/model_manager.py` for downloading supported model packages into the framework expected `models/` layout.
 
-Some models also have GGUF packages available. Current GGUF repositories include [audio-cpp/audio.cpp-gguf](https://huggingface.co/audio-cpp/audio.cpp-gguf) and [mirek190/audio.cpp](https://huggingface.co/mirek190/audio.cpp). See [docs/gguf.md](docs/gguf.md) for GGUF support and conversion status. A dedicated GGUF model-management tool is under development.
+Some models also have GGUF packages available. Current GGUF repositories include [audio-cpp/audio.cpp-gguf](https://huggingface.co/audio-cpp/audio.cpp-gguf) and [mirek190/audio.cpp](https://huggingface.co/mirek190/audio.cpp). See [docs/gguf.md](docs/gguf.md) for GGUF support status. A dedicated GGUF model-management tool is under development.
 
 Dependencies:
 
@@ -512,6 +521,7 @@ The Python-reference side of these tests usually requires more time-consuming se
 
 ## Projects
 
+- [TranscrIA](https://github.com/Martossien/transcria) is a self-hosted meeting transcription platform with diarization and local LLM correction. audio.cpp is integrated as a first-class STT engine in the product.
 - [Pocket TTS Browser Engine](https://github.com/jjmlovesgit/pocket-tts-browser-engine) uses audio.cpp to bring fully local PocketTTS voices into Chrome and Edge through the browser TTS API.
 - [GuideAnts](https://github.com/Elumenotion/GuideAnts) uses audio.cpp as the default local AI stack path for basic ASR and TTS, with planned reusable skills for audio.cpp scenarios and model configurations.
 
