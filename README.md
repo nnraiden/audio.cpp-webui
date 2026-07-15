@@ -1,6 +1,8 @@
 # audio.cpp
 
-This fork is maintained for my own local use. It stays close to upstream `audio.cpp`, adds a lightweight built-in Web UI path, and does not aim to become a broad downstream distribution with a separate product roadmap. The current Web UI is wired for `pocket_tts`, `vibevoice`, `omnivoice`, `chatterbox`, `moss_tts_local`, `moss_tts_nano`, `kokoro_tts`, and `ace_step`.
+This fork is maintained for my own local use. It stays close to upstream `audio.cpp`, adds a lightweight built-in Web UI path, and does not aim to become a broad downstream distribution with a separate product roadmap. The current Web UI is wired for `pocket_tts`, `vibevoice`, `omnivoice`, `chatterbox`, `moss_tts_local`, `moss_tts_nano`, `kokoro_tts`, and `ace_step`, with streaming playback support for TTS models exposed by the server in streaming mode.
+
+The Web UI layer is still being tested incrementally while models and controls are added. Expect rough edges, partial family coverage, and occasional UI churn. A significant amount of the integration work is being iterated quickly with heavy LLM assistance, so the UI surface should be treated as practical and evolving rather than fully stabilized.
 
 For the Web UI, set `"webui_root"` in `server.json`, start `audiocpp_server`, and open the server root in your browser. Docker example:
 

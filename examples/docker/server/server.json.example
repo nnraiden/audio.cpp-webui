@@ -35,9 +35,26 @@
       "voice_presets": {
         "en_alice_woman": {
           "voice_ref": "/models/voices/en-Alice_woman.wav"
+        },
+        "scarlett": {
+          "voice_ref": "/models/voices/scarlett.wav"
         }
       },
       "default_voice_preset": "en_alice_woman"
+    },
+    {
+      "id": "omnivoice-stream",
+      "family": "omnivoice",
+      "path": "/models/OmniVoice",
+      "task": "tts",
+      "mode": "streaming",
+      "voice_presets": {
+        "scarlett": {
+          "voice_ref": "/models/voices/scarlett.wav",
+          "reference_text": "Hello from Scarlett."
+        }
+      },
+      "default_voice_preset": "scarlett"
     }
   ]
 }
