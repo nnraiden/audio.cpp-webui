@@ -157,6 +157,7 @@ scripts/build_linux.sh --backend cuda --target audiocpp_cli --target audiocpp_se
 scripts/build_linux.sh --backend vulkan --target audiocpp_cli --target audiocpp_server
 scripts/build_linux.sh --backend cpu --target audiocpp_cli --target audiocpp_server
 scripts/build_linux.sh --backend cuda --native-cpu OFF --target audiocpp_cli --target audiocpp_server
+scripts/build_linux.sh --backend cuda --deployment-build --target audiocpp_cli --target audiocpp_server
 ```
 
 Use `--build-dir <dir>` only when you intentionally want a custom output directory.
@@ -208,6 +209,7 @@ Useful variants:
 .\scripts\build_windows.ps1 -Preset windows-cpu-release -Target audiocpp_cli
 .\scripts\build_windows.ps1 -Preset windows-cuda-debug -Target audiocpp_cli
 .\scripts\build_windows.ps1 -NativeCpu OFF -Target audiocpp_cli
+.\scripts\build_windows.ps1 -DeploymentBuild -Target audiocpp_cli
 .\scripts\build_windows.ps1 -ConfigureOnly
 .\scripts\build_windows.ps1 -CudaArchitectures 120a-real
 ```
@@ -243,6 +245,7 @@ scripts/build_metal.sh --build-type Release --archs arm64 --target audiocpp_cli
 scripts/build_metal.sh --with-tests --target audio_dsp_test
 scripts/build_metal.sh --openmp auto --target audiocpp_cli
 scripts/build_metal.sh --native-cpu OFF --target audiocpp_cli
+scripts/build_metal.sh --deployment-build --target audiocpp_cli
 ```
 
 The built CLI is written to:
@@ -265,6 +268,7 @@ Build options:
 | `ENGINE_BUILD_EXAMPLES` | Build example binaries. | `OFF` |
 | `ENGINE_BUILD_TESTS` | Build framework unit tests. | `OFF` |
 | `ENGINE_BUILD_WARMBENCH` | Build warmbench helper binaries. | `OFF` |
+| `AUDIOCPP_DEPLOYMENT_BUILD` | Compile package specs into CLI/server binaries for standalone GGUF and package-spec fallback loading. Script builds expose this as `--deployment-build` on Linux/macOS and `-DeploymentBuild` on Windows. | `OFF` |
 
 ### Build Type Notes
 
