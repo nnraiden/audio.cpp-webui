@@ -1,4 +1,5 @@
 import { elements } from "./dom.js";
+import { isSpeechModel } from "./modelTasks.js";
 import { getSelectedModel, state } from "./state.js";
 import { renderFamilyFields, renderFamilyPanelTools } from "./ttsFamilies.js";
 
@@ -42,7 +43,7 @@ export function renderModels() {
     ? `Using ${model.id} (${model.family}) for ${model.task} in ${model.mode} mode.`
     : "No model is currently available.";
 
-  const isTts = model?.task === "tts";
+  const isTts = isSpeechModel(model);
   const isAsr = model?.task === "asr";
   elements.ttsPanel.classList.toggle("hidden", !isTts);
   elements.asrPanel.classList.toggle("hidden", !isAsr);

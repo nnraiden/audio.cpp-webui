@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { isSpeechModel } from "../js/modelTasks.js";
 import { buildSpeechRequest, ensureFamilyDraft, renderFamilyFields, renderFamilyPanelTools, updateFamilyDraftFile } from "../js/ttsFamilies.js";
 
 const OMNIVOICE_MODEL = {
@@ -287,6 +288,13 @@ function testOmniVoiceTranscriptValidation() {
   );
 }
 
+function testSpeechTaskClassification() {
+  assert.equal(isSpeechModel({ task: "tts" }), true);
+  assert.equal(isSpeechModel({ task: "clon" }), true);
+  assert.equal(isSpeechModel({ task: "asr" }), false);
+  assert.equal(isSpeechModel(null), false);
+}
+
 function testChatterboxRendering() {
   const baseDraft = ensureFamilyDraft(CHATTERBOX_MODEL, null);
 
@@ -294,6 +302,8 @@ function testChatterboxRendering() {
   assert.match(html, /Shared WAV Sample/);
   assert.match(html, /Upload WAV/);
   assert.match(html, /Reference Transcript/);
+  assert.match(html, /Language/);
+  assert.match(html, /<option value="en" selected>en<\/option>/);
   assert.match(html, /Advanced Chatterbox controls/);
   assert.match(html, /Guidance Scale/);
   assert.match(html, /Temperature/);
@@ -324,6 +334,7 @@ function testChatterboxSerialization() {
     prompt: "Hello from Chatterbox.",
     source: "sample",
     samplePath: "/srv/shared/voice.wav",
+    language: "ja",
     showAdvanced: true,
     guidanceScale: "0.7",
     temperature: "0.9",
@@ -342,6 +353,8 @@ function testChatterboxSerialization() {
     model: "chatterbox",
     input: "Hello from Chatterbox.",
     voice_ref: "/srv/shared/voice.wav",
+    language: "ja",
+    reference_text: "Shared voice transcript",
     seed: 42,
     max_tokens: 500,
     guidance_scale: 0.7,
@@ -357,6 +370,7 @@ function testChatterboxSerialization() {
     ensureFamilyDraft(CHATTERBOX_MODEL, {
       prompt: "Upload prompt",
       source: "upload",
+      language: "de",
       referenceText: "Upload transcript",
       showAdvanced: true,
       guidanceScale: "0.5",
@@ -374,6 +388,7 @@ function testChatterboxSerialization() {
   assert.deepEqual(formEntries(uploadRequest.payload), [
     ["model", "chatterbox"],
     ["input", "Upload prompt"],
+    ["language", "de"],
     ["seed", "13"],
     ["voice_ref", "voice.wav"],
     ["reference_text", "Upload transcript"],
@@ -405,20 +420,6 @@ function testChatterboxValidation() {
       CHATTERBOX_MODEL,
       ensureFamilyDraft(CHATTERBOX_MODEL, {
         prompt: "Hello.",
-        source: "sample",
-        samplePath: "/srv/shared/missing.wav",
-      }),
-      {},
-      { voices: [], presets: [], samples: [{ id: "missing", path: "/srv/shared/missing.wav", transcript_text: null }] }
-    ),
-    /shared sample does not have reference text/
-  );
-
-  assert.throws(
-    () => buildSpeechRequest(
-      CHATTERBOX_MODEL,
-      ensureFamilyDraft(CHATTERBOX_MODEL, {
-        prompt: "Hello.",
         source: "upload",
         uploadFile: null,
       }),
@@ -427,6 +428,18 @@ function testChatterboxValidation() {
     ),
     /Upload a WAV file for Chatterbox/
   );
+
+  const noTranscriptRequest = buildSpeechRequest(
+    CHATTERBOX_MODEL,
+    ensureFamilyDraft(CHATTERBOX_MODEL, {
+      prompt: "Hello.",
+      source: "sample",
+      samplePath: "/srv/shared/missing.wav",
+    }),
+    {},
+    { voices: [], presets: [], samples: [{ id: "missing", path: "/srv/shared/missing.wav", transcript_text: null }] }
+  );
+  assert.equal(noTranscriptRequest.payload.reference_text, undefined);
 }
 
 function testMossTextOnlyRendering() {
@@ -451,10 +464,12 @@ function testMossCloneRendering() {
     mode: "clone",
     source: "sample",
     samplePath: "/srv/shared/moss_voice.wav",
+    textChunkMode: "tag_aware",
   });
   const html = renderFamilyFields(MOSS_LOCAL_MODEL, draft, MOSS_CATALOG);
   assert.match(html, />Reference transcript comes from a same-stem .txt file/);
   assert.match(html, /readonly/);
+  assert.match(html, /<option value="tag_aware" selected>tag_aware<\/option>/);
 
   const uploadDraft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
     mode: "clone",
@@ -472,8 +487,13 @@ function testMossTextOnlySerialization() {
     mode: "text_only",
     maxTokens: "2048",
     showAdvanced: true,
+    doSample: false,
+    temperature: "1.1",
+    topP: "0.9",
+    topK: "35",
+    repetitionPenalty: "1.3",
     textTemperature: "1.2",
-    textTopP: "0.9",
+    textTopP: "0.85",
     textTopK: "40",
     textChunkMode: "tag_aware",
   });
@@ -483,10 +503,15 @@ function testMossTextOnlySerialization() {
   assert.equal(request.payload.input, "Hello from MOSS.");
   assert.equal(request.payload.seed, 42);
   assert.equal(request.payload.max_tokens, 2048);
+  assert.equal(request.payload.temperature, 1.1);
+  assert.equal(request.payload.top_p, 0.9);
+  assert.equal(request.payload.top_k, 35);
+  assert.equal(request.payload.repetition_penalty, 1.3);
+  assert.equal(request.payload.do_sample, "false");
   assert.deepEqual(request.payload.options, {
     text_chunk_mode: "tag_aware",
     text_temperature: 1.2,
-    text_top_p: 0.9,
+    text_top_p: 0.85,
     text_top_k: 40,
   });
 }
@@ -497,17 +522,47 @@ function testMossCloneSerialization() {
     mode: "clone",
     source: "sample",
     samplePath: "/srv/shared/moss_voice.wav",
-    referenceText: "Reference transcript",
     showAdvanced: true,
+    maxTokens: "1024",
+    doSample: false,
+    temperature: "1.4",
+    topP: "0.75",
+    topK: "30",
+    repetitionPenalty: "1.6",
     textTemperature: "1.5",
+    textTopP: "0.95",
+    textTopK: "45",
+    textChunkMode: "tag_aware",
   });
   const request = buildSpeechRequest(MOSS_LOCAL_MODEL, draft, { seed: 99 }, MOSS_CATALOG);
   assert.equal(request.transport, "json");
   assert.equal(request.payload.voice_ref, "/srv/shared/moss_voice.wav");
-  assert.equal(request.payload.reference_text, "Reference transcript");
+  assert.equal(request.payload.reference_text, "MOSS voice transcript");
+  assert.equal(request.payload.max_tokens, 1024);
+  assert.equal(request.payload.temperature, 1.4);
+  assert.equal(request.payload.top_p, 0.75);
+  assert.equal(request.payload.top_k, 30);
+  assert.equal(request.payload.repetition_penalty, 1.6);
+  assert.equal(request.payload.do_sample, "false");
   assert.deepEqual(request.payload.options, {
+    text_chunk_mode: "tag_aware",
     text_temperature: 1.5,
+    text_top_p: 0.95,
+    text_top_k: 45,
   });
+
+  const noTranscriptRequest = buildSpeechRequest(
+    MOSS_LOCAL_MODEL,
+    ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+      prompt: "Clone prompt without transcript.",
+      mode: "clone",
+      source: "sample",
+      samplePath: "/srv/shared/moss_voice.wav",
+    }),
+    {},
+    { voices: [], presets: [], samples: [{ id: "shared/moss_voice", path: "/srv/shared/moss_voice.wav", transcript_text: null }] }
+  );
+  assert.equal(noTranscriptRequest.payload.reference_text, undefined);
 
   const uploadFile = new File(["RIFF"], "moss_voice.wav", { type: "audio/wav" });
   const uploadDraft = updateFamilyDraftFile(
@@ -518,7 +573,16 @@ function testMossCloneSerialization() {
       source: "upload",
       referenceText: "Upload transcript",
       showAdvanced: true,
+      maxTokens: "512",
+      doSample: false,
+      temperature: "1.25",
+      topP: "0.65",
+      topK: "28",
+      repetitionPenalty: "1.2",
       textTemperature: "1.0",
+      textTopP: "0.8",
+      textTopK: "32",
+      textChunkMode: "endline",
     }),
     "moss-upload-file",
     null,
@@ -530,9 +594,15 @@ function testMossCloneSerialization() {
     ["model", "moss_tts_local"],
     ["input", "Upload clone."],
     ["seed", "7"],
+    ["max_tokens", "512"],
+    ["temperature", "1.25"],
+    ["top_p", "0.65"],
+    ["top_k", "28"],
+    ["repetition_penalty", "1.2"],
+    ["do_sample", "false"],
     ["voice_ref", "moss_voice.wav"],
     ["reference_text", "Upload transcript"],
-    ["text_temperature", "1"],
+    ["options", "{\"text_chunk_mode\":\"endline\",\"text_temperature\":1,\"text_top_p\":0.8,\"text_top_k\":32}"],
   ]);
 }
 
@@ -590,6 +660,7 @@ function main() {
   testOmniVoiceDesignAndAdvancedRendering();
   testOmniVoiceSerialization();
   testOmniVoiceTranscriptValidation();
+  testSpeechTaskClassification();
   testChatterboxRendering();
   testChatterboxSerialization();
   testChatterboxValidation();

@@ -22,6 +22,7 @@ const OMNIVOICE_TAGS = [
 ];
 
 const OMNIVOICE_INSTRUCTION_EXAMPLE = "female, young adult, moderate pitch, british accent";
+const CHATTERBOX_LANGUAGES = ["en", "de", "fr", "es", "it", "pt", "pl", "tr", "ja", "zh"];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -85,6 +86,10 @@ function findSampleByPath(voiceCatalog, samplePath) {
 
 function findPresetById(voiceCatalog, presetId) {
   return normalizeCatalog(voiceCatalog).presets.find((preset) => preset.id === presetId) ?? null;
+}
+
+function sampleTranscriptText(voiceCatalog, samplePath) {
+  return findSampleByPath(voiceCatalog, samplePath)?.transcript_text ?? "";
 }
 
 function renderSelectOptions(options, selectedValue, defaultLabel) {
@@ -395,7 +400,7 @@ function serializeOmniVoiceRequest(model, draft, shared, voiceCatalog) {
 
 const MOSS_CHUNK_MODES = ["default", "tag_aware", "japanese", "endline"];
 
-function createMossSpec({ maxTokens, textChunkSize, textTemperature, textTopP, textTopK }) {
+function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
   return {
     promptLabel: "Input Text",
     promptRows: 7,
@@ -450,7 +455,9 @@ function createMossSpec({ maxTokens, textChunkSize, textTemperature, textTopP, t
     renderFields(draft, voiceCatalog) {
       const sampleOptions = makeSampleOptions(voiceCatalog);
       const uploadName = draft.uploadFile?.name ?? "No file selected";
-      const chunkModeOptions = MOSS_CHUNK_MODES.map((m) => `<option value="${m}">${m}</option>`).join("");
+      const chunkModeOptions = MOSS_CHUNK_MODES
+        .map((m) => `<option value="${m}" ${m === draft.textChunkMode ? "selected" : ""}>${m}</option>`)
+        .join("");
       return `
         ${renderPromptField(this, draft)}
         <div class="segmented-control" role="radiogroup" aria-label="MOSS mode">
@@ -601,18 +608,24 @@ function createMossSpec({ maxTokens, textChunkSize, textTemperature, textTopP, t
         model: model.id,
         input: draft.prompt.trim(),
         ...(draft.maxTokens !== "" ? { max_tokens: Number(draft.maxTokens) } : {}),
+        ...(draft.temperature !== "" ? { temperature: Number(draft.temperature) } : {}),
+        ...(draft.topP !== "" ? { top_p: Number(draft.topP) } : {}),
+        ...(draft.topK !== "" ? { top_k: Number(draft.topK) } : {}),
+        ...(draft.repetitionPenalty !== "" ? { repetition_penalty: Number(draft.repetitionPenalty) } : {}),
+        do_sample: draft.doSample ? "true" : "false",
         ...shared,
         ...(Object.keys(options).length > 0 ? { options } : {}),
       };
 
       if (draft.mode === "clone") {
         if (draft.source === "sample") {
+          const referenceText = sampleTranscriptText(voiceCatalog, draft.samplePath).trim();
           return {
             transport: "json",
             payload: {
               ...payloadBase,
               voice_ref: draft.samplePath,
-              ...(draft.referenceText.trim() ? { reference_text: draft.referenceText.trim() } : {}),
+              ...(referenceText ? { reference_text: referenceText } : {}),
             },
           };
         }
@@ -624,14 +637,27 @@ function createMossSpec({ maxTokens, textChunkSize, textTemperature, textTopP, t
         if (draft.maxTokens !== "") {
           formData.append("max_tokens", String(draft.maxTokens));
         }
+        if (draft.temperature !== "") {
+          formData.append("temperature", String(draft.temperature));
+        }
+        if (draft.topP !== "") {
+          formData.append("top_p", String(draft.topP));
+        }
+        if (draft.topK !== "") {
+          formData.append("top_k", String(draft.topK));
+        }
+        if (draft.repetitionPenalty !== "") {
+          formData.append("repetition_penalty", String(draft.repetitionPenalty));
+        }
+        formData.append("do_sample", draft.doSample ? "true" : "false");
         if (draft.uploadFile) {
           formData.append("voice_ref", draft.uploadFile);
         }
         if (draft.referenceText.trim()) {
           formData.append("reference_text", draft.referenceText.trim());
         }
-        for (const [key, value] of Object.entries(options)) {
-          formData.append(key, String(value));
+        if (Object.keys(options).length > 0) {
+          formData.append("options", JSON.stringify(options));
         }
         return {
           transport: "multipart",
@@ -651,9 +677,6 @@ function createMossSpec({ maxTokens, textChunkSize, textTemperature, textTopP, t
       if (draft.mode === "clone") {
         if (draft.source === "sample" && !draft.samplePath) {
           throw new Error("Choose a shared WAV sample for MOSS voice cloning.");
-        }
-        if (draft.source === "sample" && !findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text?.trim()) {
-          throw new Error("The selected MOSS shared sample does not have reference text. Add a same-stem .txt file or use upload mode.");
         }
         if (draft.source === "upload" && !draft.uploadFile) {
           throw new Error("Upload a WAV file for MOSS voice cloning.");
@@ -872,6 +895,7 @@ const FAMILY_SPECS = {
         uploadFile: null,
         referenceText: "",
         showAdvanced: false,
+        language: "en",
         guidanceScale: "0.5",
         temperature: "0.8",
         topP: "0.8",
@@ -887,6 +911,7 @@ const FAMILY_SPECS = {
       draft.uploadFile = draft.uploadFile instanceof File ? draft.uploadFile : null;
       draft.referenceText = typeof draft.referenceText === "string" ? draft.referenceText : "";
       draft.showAdvanced = draft.showAdvanced === true;
+      draft.language = CHATTERBOX_LANGUAGES.includes(draft.language) ? draft.language : "en";
       draft.guidanceScale = normalizeNumericDraftValue(draft.guidanceScale);
       draft.temperature = normalizeNumericDraftValue(draft.temperature);
       draft.topP = normalizeNumericDraftValue(draft.topP);
@@ -896,6 +921,10 @@ const FAMILY_SPECS = {
     renderFields(draft, voiceCatalog) {
       const sampleOptions = makeSampleOptions(voiceCatalog);
       const uploadName = draft.uploadFile?.name ?? "No file selected";
+      const sampleReferenceText = sampleTranscriptText(voiceCatalog, draft.samplePath);
+      const languageOptions = CHATTERBOX_LANGUAGES
+        .map((language) => `<option value="${language}" ${language === draft.language ? "selected" : ""}>${language}</option>`)
+        .join("");
       return `
         ${renderPromptField(this, draft)}
         <div class="segmented-control" role="radiogroup" aria-label="Chatterbox voice reference">
@@ -920,8 +949,14 @@ const FAMILY_SPECS = {
         </div>
         <label class="field" data-visibility="chatterbox-reference-text">
           <span>Reference Transcript</span>
-          <textarea data-role="chatterbox-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${draft.source === "sample" ? "readonly" : ""}>${escapeHtml(draft.source === "sample" ? (findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text ?? "") : draft.referenceText)}</textarea>
+          <textarea data-role="chatterbox-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${draft.source === "sample" ? "readonly" : ""}>${escapeHtml(draft.source === "sample" ? sampleReferenceText : draft.referenceText)}</textarea>
           <small class="family-helper">${draft.source === "sample" ? "Reference transcript comes from a same-stem .txt file when available." : "Transcript is optional when uploading a reference WAV."}</small>
+        </label>
+        <label class="field">
+          <span>Language</span>
+          <select data-role="chatterbox-language">
+            ${languageOptions}
+          </select>
         </label>
         <div class="field-stack">
           <label class="toggle-row">
@@ -959,6 +994,7 @@ const FAMILY_SPECS = {
       draft.source = root.querySelector('[data-role="chatterbox-source"]:checked')?.value ?? draft.source;
       draft.samplePath = root.querySelector('[data-role="voice-select"]')?.value ?? draft.samplePath;
       draft.referenceText = root.querySelector('[data-role="chatterbox-reference-text"]')?.value ?? draft.referenceText;
+      draft.language = root.querySelector('[data-role="chatterbox-language"]')?.value ?? draft.language;
       draft.showAdvanced = root.querySelector('[data-role="chatterbox-show-advanced"]')?.checked ?? draft.showAdvanced;
       draft.doSample = root.querySelector('[data-role="chatterbox-do-sample"]')?.checked ?? draft.doSample;
       for (const input of root.querySelectorAll('[data-role="chatterbox-advanced-input"]')) {
@@ -981,6 +1017,7 @@ const FAMILY_SPECS = {
     },
     serializeRequest(model, draft, shared, voiceCatalog) {
       const advancedFields = {};
+      const sampleReferenceText = sampleTranscriptText(voiceCatalog, draft.samplePath).trim();
       if (draft.guidanceScale !== "") {
         advancedFields.guidance_scale = Number(draft.guidanceScale);
       }
@@ -1002,7 +1039,8 @@ const FAMILY_SPECS = {
             model: model.id,
             input: draft.prompt.trim(),
             voice_ref: draft.samplePath,
-            ...(draft.referenceText.trim() ? { reference_text: draft.referenceText.trim() } : {}),
+            language: draft.language,
+            ...(sampleReferenceText ? { reference_text: sampleReferenceText } : {}),
             ...shared,
             ...advancedFields,
           },
@@ -1012,6 +1050,7 @@ const FAMILY_SPECS = {
       const formData = new FormData();
       formData.append("model", model.id);
       formData.append("input", draft.prompt.trim());
+      formData.append("language", draft.language);
       appendFields(formData, shared);
       if (draft.uploadFile) {
         formData.append("voice_ref", draft.uploadFile);
@@ -1034,9 +1073,6 @@ const FAMILY_SPECS = {
       if (draft.source === "sample" && !draft.samplePath) {
         throw new Error("Choose a shared WAV sample for Chatterbox voice cloning.");
       }
-      if (draft.source === "sample" && !findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text?.trim()) {
-        throw new Error("The selected Chatterbox shared sample does not have reference text. Add a same-stem .txt file or use upload mode.");
-      }
       if (draft.source === "upload" && !draft.uploadFile) {
         throw new Error("Upload a WAV file for Chatterbox voice cloning.");
       }
@@ -1044,14 +1080,12 @@ const FAMILY_SPECS = {
   },
   moss_tts_local: createMossSpec({
     maxTokens: 4096,
-    textChunkSize: 2048,
     textTemperature: "1.0",
     textTopP: "1.0",
     textTopK: "50",
   }),
   moss_tts_nano: createMossSpec({
     maxTokens: 300,
-    textChunkSize: 256,
     textTemperature: "1.5",
     textTopP: "1.0",
     textTopK: "50",

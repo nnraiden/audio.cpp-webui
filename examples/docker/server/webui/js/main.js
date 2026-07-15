@@ -1,5 +1,6 @@
 import { fetchHealth, fetchModels, fetchVoices, synthesizeSpeech, transcribeAudio } from "./api.js";
 import { elements } from "./dom.js";
+import { isSpeechModel } from "./modelTasks.js";
 import { clearOutputs, logEvent, renderAsrResult, renderHealth, renderHealthError, renderModels, renderTtsFamilyForm, renderTtsResult } from "./ui.js";
 import { getFamilyDraft, getSelectedModel, setFamilyDraft, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog, state } from "./state.js";
 import { buildSpeechRequest, ensureFamilyDraft, readFamilyDraftFromDom, updateFamilyDraftFile } from "./ttsFamilies.js";
@@ -48,7 +49,7 @@ function syncTtsFamilyForm() {
 
 async function syncVoices() {
   const model = getSelectedModel();
-  if (!model || model.task !== "tts") {
+  if (!isSpeechModel(model)) {
     setVoiceCatalog({ voices: [], presets: [], samples: [] });
     return;
   }
@@ -207,6 +208,30 @@ function attachEvents() {
         getSelectedModel(),
         readCurrentFamilyDraft(),
         "omnivoice-upload-file",
+        null,
+        event.target.files?.[0] ?? null
+      );
+      setFamilyDraft(currentFamilyKey(), draft);
+      syncTtsFamilyForm();
+      return;
+    }
+    if (event.target.dataset.role === "chatterbox-upload-file") {
+      const draft = updateFamilyDraftFile(
+        getSelectedModel(),
+        readCurrentFamilyDraft(),
+        "chatterbox-upload-file",
+        null,
+        event.target.files?.[0] ?? null
+      );
+      setFamilyDraft(currentFamilyKey(), draft);
+      syncTtsFamilyForm();
+      return;
+    }
+    if (event.target.dataset.role === "moss-upload-file") {
+      const draft = updateFamilyDraftFile(
+        getSelectedModel(),
+        readCurrentFamilyDraft(),
+        "moss-upload-file",
         null,
         event.target.files?.[0] ?? null
       );
