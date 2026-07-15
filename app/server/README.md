@@ -240,7 +240,7 @@ The stream emits `transcript.text.delta` events, one final `transcript.text.done
 
 ### `GET /v1/audio/voices?model=<id>`
 
-Lists the cached voice ids, configured server voice preset names, and shared WAV samples available for a TTS model, so a client can populate a voice picker instead of guessing generic names. Shared samples come from `voice_samples_base`, scan recursively for `.wav`, and expose nullable sibling transcript text from same-directory `same-stem.txt` files. For families that keep voice presets under `model_root/embeddings/*.safetensors` (`pocket_tts` today), this returns those ids too; for other families with no configured presets, or an unknown/missing `model` parameter, it returns an empty list.
+Lists the cached voice ids, configured server voice preset names, and shared WAV samples available for a TTS model, so a client can populate a voice picker instead of guessing generic names. Shared samples come from `voice_samples_base`, scan recursively for `.wav`, and expose nullable sibling transcript text from same-directory `same-stem.txt` files. For families with discoverable built-in voice ids, this also scans the model directory for known voice stores such as `model_root/embeddings/*.safetensors` (`pocket_tts`) and `model_root/voices/*.safetensors` (`kokoro_tts`). Families without a built-in voice directory still return configured presets and shared samples only.
 
 ```bash
 curl 'http://127.0.0.1:8080/v1/audio/voices?model=pocket-tts'

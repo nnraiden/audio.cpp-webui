@@ -23,6 +23,10 @@ const OMNIVOICE_TAGS = [
 
 const OMNIVOICE_INSTRUCTION_EXAMPLE = "female, young adult, moderate pitch, british accent";
 const CHATTERBOX_LANGUAGES = ["en", "de", "fr", "es", "it", "pt", "pl", "tr", "ja", "zh"];
+const KOKORO_LANGUAGES = [
+  { value: "a", label: "a (American English)" },
+  { value: "b", label: "b (British English)" },
+];
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -786,6 +790,76 @@ const FAMILY_SPECS = {
       ));
       if (missingSpeaker) {
         throw new Error("Each VibeVoice speaker row needs a shared sample, preset, or local WAV.");
+      }
+    },
+  },
+  kokoro_tts: {
+    promptLabel: "Input Text",
+    promptRows: 7,
+    placeholder: "",
+    defaultValue: DEFAULT_TEXT,
+    helper: "Kokoro uses built-in packaged voices only. Select a server-exposed voice id or preset name.",
+    textMode: "plain_text",
+    cloneMode: "none",
+    catalogSources: ["voices"],
+    localUpload: false,
+    createDraft() {
+      return {
+        prompt: DEFAULT_TEXT,
+        voice: "",
+        language: "a",
+      };
+    },
+    ensureDraft(existingDraft) {
+      const draft = existingDraft ?? this.createDraft();
+      draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
+      draft.voice = typeof draft.voice === "string" ? draft.voice : "";
+      draft.language = KOKORO_LANGUAGES.some((option) => option.value === draft.language) ? draft.language : "a";
+      return draft;
+    },
+    renderFields(draft, voiceCatalog) {
+      const languageOptions = KOKORO_LANGUAGES
+        .map((option) => (
+          `<option value="${option.value}" ${option.value === draft.language ? "selected" : ""}>${escapeHtml(option.label)}</option>`
+        ))
+        .join("");
+      return `
+        ${renderVoiceSelect("Voice", makeServerVoiceOptions(voiceCatalog), draft.voice, "Select voice")}
+        <label class="field">
+          <span>Language</span>
+          <select data-role="kokoro-language">
+            ${languageOptions}
+          </select>
+          <small class="family-helper">Kokoro exposes <code>a</code> for American English and <code>b</code> for British English.</small>
+        </label>
+        ${renderPromptField(this, draft)}
+      `;
+    },
+    readDraftFromDom(root, existingDraft) {
+      const draft = this.ensureDraft(existingDraft);
+      draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
+      draft.voice = root.querySelector('[data-role="voice-select"]')?.value ?? draft.voice;
+      draft.language = root.querySelector('[data-role="kokoro-language"]')?.value ?? draft.language;
+      return draft;
+    },
+    serializeRequest(model, draft, shared) {
+      return {
+        transport: "json",
+        payload: {
+          model: model.id,
+          input: draft.prompt.trim(),
+          voice: draft.voice,
+          language: draft.language,
+          ...shared,
+        },
+      };
+    },
+    validateDraft(draft) {
+      if (!draft.voice) {
+        throw new Error("Choose a Kokoro voice before submitting.");
+      }
+      if (!draft.prompt.trim()) {
+        throw new Error("Enter text before submitting.");
       }
     },
   },

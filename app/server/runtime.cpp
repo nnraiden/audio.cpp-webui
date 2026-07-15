@@ -1309,12 +1309,40 @@ HttpResponse ServerState::handle_generic_stream(const std::string & body_text) {
     return json_response(out.str());
 }
 
-// Cached-voice discovery for the "voice"/cached_voice_id request field. Families that
-// support voice presets (e.g. pocket_tts, see assets.cpp: model_root/embeddings/<id>.safetensors)
-// keep them under an "embeddings" directory next to the model weights; other families simply
-// have no such directory and report no voices. Used by clients (llama-swap's playground, and
-// potentially Open WebUI) that call GET /v1/audio/voices?model=<id> to populate a voice picker
-// instead of guessing generic names like "alloy"/"nova".
+std::vector<std::string> ServerState::discover_cached_voice_ids(const LoadedModel & model) const {
+    std::vector<std::string> voices;
+
+    // Keep this catalog path narrow: PocketTTS stores discoverable cached voices under
+    // model_root/embeddings, while Kokoro exposes packaged built-in voices under
+    // model_root/voices. Other families should continue to rely on configured presets
+    // until they have a stable on-disk voice catalog contract.
+    std::vector<std::filesystem::path> search_dirs = {
+        model.config.path / "embeddings",
+    };
+    if (model.config.family == "kokoro_tts") {
+        search_dirs.push_back(model.config.path / "voices");
+    }
+
+    std::error_code ec;
+    for (const auto & dir : search_dirs) {
+        if (!std::filesystem::is_directory(dir, ec)) {
+            continue;
+        }
+        for (const auto & entry : std::filesystem::directory_iterator(dir, ec)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".safetensors") {
+                voices.push_back(entry.path().stem().string());
+            }
+        }
+    }
+
+    std::sort(voices.begin(), voices.end());
+    voices.erase(std::unique(voices.begin(), voices.end()), voices.end());
+    return voices;
+}
+
+// Cached-voice discovery for the "voice"/cached_voice_id request field. Used by clients
+// that call GET /v1/audio/voices?model=<id> to populate a voice picker instead of
+// guessing generic names like "alloy"/"nova".
 HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
     const std::string model_id = query_param(request.query, "model");
     const auto sample_entries = shared_voice_samples();
@@ -1328,15 +1356,8 @@ HttpResponse ServerState::handle_voices(const HttpRequest & request) const {
             voices.push_back(name);
             preset_names.push_back(name);
         }
-        const auto embeddings_dir = model.config.path / "embeddings";
-        std::error_code ec;
-        if (std::filesystem::is_directory(embeddings_dir, ec)) {
-            for (const auto & entry : std::filesystem::directory_iterator(embeddings_dir, ec)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".safetensors") {
-                    voices.push_back(entry.path().stem().string());
-                }
-            }
-        }
+        const auto discovered_voices = discover_cached_voice_ids(model);
+        voices.insert(voices.end(), discovered_voices.begin(), discovered_voices.end());
 
         std::sort(preset_names.begin(), preset_names.end());
 

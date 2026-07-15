@@ -82,6 +82,7 @@ private:
     HttpResponse handle_generic_stream(const std::string & body_text);
     HttpResponse handle_voices(const HttpRequest & request) const;
     HttpResponse handle_webui_request(const HttpRequest & request) const;
+    std::vector<std::string> discover_cached_voice_ids(const LoadedModel & model) const;
     std::vector<SharedVoiceSample> shared_voice_samples() const;
     std::string models_json() const;
 

@@ -125,6 +125,51 @@ void test_voices_endpoint_uses_shared_samples_and_model_presets() {
     require(engine::io::json::require_string(samples[2], "transcript_text") == "Nested transcript", "nested sibling transcript should be exposed");
 }
 
+void test_voices_endpoint_discovers_kokoro_packaged_voices() {
+    const auto root = make_temp_root();
+    const auto model_dir = root / "models" / "kokoro";
+    const auto voices_dir = model_dir / "voices";
+
+    std::filesystem::create_directories(voices_dir);
+    write_text_file(voices_dir / "af_heart.safetensors", "stub");
+    write_text_file(voices_dir / "bf_isabella.safetensors", "stub");
+    write_text_file(voices_dir / "ignore.txt", "stub");
+
+    const auto config_path = write_config(
+        root,
+        "server_kokoro.json",
+        R"JSON({
+  "host": "127.0.0.1",
+  "port": 8080,
+  "backend": "cpu",
+  "lazy_load": true,
+  "models": [
+    {
+      "id": "kokoro",
+      "family": "kokoro_tts",
+      "path": "models/kokoro"
+    }
+  ]
+})JSON");
+
+    auto config = minitts::server::load_server_config(config_path);
+    minitts::server::ServerState state(std::move(config), root);
+    minitts::server::HttpRequest request;
+    request.method = "GET";
+    request.path = "/v1/audio/voices";
+    request.query = "model=kokoro";
+    const minitts::server::HttpResponse response = state.handle(request);
+
+    require(response.status == 200, "kokoro voices endpoint should return 200");
+    const auto payload = engine::io::json::parse(response.body);
+    const auto & voices = payload.require("voices").as_array();
+    require(voices.size() == 2, "kokoro voices should expose packaged voice ids");
+    require(voices[0].as_string() == "af_heart", "first kokoro voice should match voices directory");
+    require(voices[1].as_string() == "bf_isabella", "second kokoro voice should match voices directory");
+    require(payload.require("presets").as_array().empty(), "kokoro presets should stay empty when unset");
+    require(payload.require("samples").as_array().empty(), "kokoro shared samples should stay empty when voice_samples_base is unset");
+}
+
 minitts::server::ServerState make_webui_state(const std::filesystem::path & root) {
     const auto webui_dir = root / "webui";
     write_text_file(webui_dir / "index.html", "<!doctype html><title>audiocpp</title>");
@@ -200,6 +245,7 @@ void test_webui_root_spa_fallback_and_api_isolation() {
 int main() {
     try {
         test_voices_endpoint_uses_shared_samples_and_model_presets();
+        test_voices_endpoint_discovers_kokoro_packaged_voices();
         test_webui_root_serves_index_and_assets();
         test_webui_root_spa_fallback_and_api_isolation();
     } catch (const std::exception & error) {

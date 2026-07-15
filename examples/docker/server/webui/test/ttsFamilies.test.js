@@ -10,6 +10,19 @@ const OMNIVOICE_MODEL = {
   mode: "offline",
 };
 
+const KOKORO_MODEL = {
+  id: "kokoro",
+  family: "kokoro_tts",
+  task: "tts",
+  mode: "offline",
+};
+
+const KOKORO_CATALOG = {
+  voices: ["af_heart", "bf_isabella"],
+  presets: [],
+  samples: [],
+};
+
 const OMNIVOICE_CATALOG = {
   voices: [],
   presets: [
@@ -75,6 +88,51 @@ const MOSS_CATALOG = {
 
 function formEntries(formData) {
   return Array.from(formData.entries()).map(([key, value]) => [key, value instanceof File ? value.name : value]);
+}
+
+function testKokoroRendering() {
+  const draft = ensureFamilyDraft(KOKORO_MODEL, null);
+  const html = renderFamilyFields(KOKORO_MODEL, draft, KOKORO_CATALOG);
+  assert.match(html, /Select voice/);
+  assert.match(html, /af_heart/);
+  assert.match(html, /bf_isabella/);
+  assert.match(html, /Language/);
+  assert.match(html, /a \(American English\)/);
+  assert.match(html, /b \(British English\)/);
+  assert.match(html, /Kokoro uses built-in packaged voices only/);
+}
+
+function testKokoroSerialization() {
+  const draft = ensureFamilyDraft(KOKORO_MODEL, {
+    prompt: "Hello from Kokoro.",
+    voice: "af_heart",
+    language: "b",
+  });
+  const request = buildSpeechRequest(KOKORO_MODEL, draft, { seed: 11, text_chunk_size: 240 }, KOKORO_CATALOG);
+  assert.equal(request.transport, "json");
+  assert.deepEqual(request.payload, {
+    model: "kokoro",
+    input: "Hello from Kokoro.",
+    voice: "af_heart",
+    language: "b",
+    seed: 11,
+    text_chunk_size: 240,
+  });
+}
+
+function testKokoroValidation() {
+  assert.throws(
+    () => buildSpeechRequest(
+      KOKORO_MODEL,
+      ensureFamilyDraft(KOKORO_MODEL, {
+        prompt: "Hello from Kokoro.",
+        voice: "",
+      }),
+      {},
+      KOKORO_CATALOG
+    ),
+    /Choose a Kokoro voice before submitting/
+  );
 }
 
 function testOmniVoiceCloneRendering() {
@@ -655,6 +713,9 @@ function testMossValidation() {
 }
 
 function main() {
+  testKokoroRendering();
+  testKokoroSerialization();
+  testKokoroValidation();
   testOmniVoiceCloneRendering();
   testOmniVoicePanelHint();
   testOmniVoiceDesignAndAdvancedRendering();
