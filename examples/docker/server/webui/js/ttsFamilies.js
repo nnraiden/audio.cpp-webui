@@ -584,6 +584,194 @@ const FAMILY_SPECS = {
       }
     },
   },
+  chatterbox: {
+    promptLabel: "Input Text",
+    promptRows: 7,
+    placeholder: "",
+    defaultValue: DEFAULT_TEXT,
+    helper: "",
+    textMode: "plain_text",
+    cloneMode: "single_wav_required",
+    catalogSources: ["samples"],
+    localUpload: true,
+    createDraft() {
+      return {
+        prompt: DEFAULT_TEXT,
+        source: "sample",
+        samplePath: "",
+        uploadFile: null,
+        referenceText: "",
+        showAdvanced: false,
+        guidanceScale: "0.5",
+        temperature: "0.8",
+        topP: "0.8",
+        repetitionPenalty: "2.0",
+        doSample: true,
+      };
+    },
+    ensureDraft(existingDraft) {
+      const draft = existingDraft ?? this.createDraft();
+      draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
+      draft.source = draft.source === "upload" ? draft.source : "sample";
+      draft.samplePath = typeof draft.samplePath === "string" ? draft.samplePath : "";
+      draft.uploadFile = draft.uploadFile instanceof File ? draft.uploadFile : null;
+      draft.referenceText = typeof draft.referenceText === "string" ? draft.referenceText : "";
+      draft.showAdvanced = draft.showAdvanced === true;
+      draft.guidanceScale = normalizeNumericDraftValue(draft.guidanceScale);
+      draft.temperature = normalizeNumericDraftValue(draft.temperature);
+      draft.topP = normalizeNumericDraftValue(draft.topP);
+      draft.repetitionPenalty = normalizeNumericDraftValue(draft.repetitionPenalty);
+      return draft;
+    },
+    renderFields(draft, voiceCatalog) {
+      const sampleOptions = makeSampleOptions(voiceCatalog);
+      const uploadName = draft.uploadFile?.name ?? "No file selected";
+      return `
+        ${renderPromptField(this, draft)}
+        <div class="segmented-control" role="radiogroup" aria-label="Chatterbox voice reference">
+          <label class="segment-option">
+            <input type="radio" name="chatterbox-source" value="sample" data-role="chatterbox-source" ${draft.source === "sample" ? "checked" : ""}>
+            <span>Shared WAV Sample</span>
+          </label>
+          <label class="segment-option">
+            <input type="radio" name="chatterbox-source" value="upload" data-role="chatterbox-source" ${draft.source === "upload" ? "checked" : ""}>
+            <span>Upload WAV</span>
+          </label>
+        </div>
+        <div class="field-stack ${draft.source === "sample" ? "" : "hidden"}" data-visibility="chatterbox-source-sample">
+          ${renderVoiceSelect("Reference WAV", sampleOptions, draft.samplePath, "Select shared sample")}
+        </div>
+        <div class="field-stack ${draft.source === "upload" ? "" : "hidden"}" data-visibility="chatterbox-source-upload">
+          <label class="field">
+            <span>Local WAV</span>
+            <input data-role="chatterbox-upload-file" type="file" accept=".wav,audio/wav">
+            <small>${escapeHtml(uploadName)}</small>
+          </label>
+        </div>
+        <label class="field" data-visibility="chatterbox-reference-text">
+          <span>Reference Transcript</span>
+          <textarea data-role="chatterbox-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${draft.source === "sample" ? "readonly" : ""}>${escapeHtml(draft.source === "sample" ? (findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text ?? "") : draft.referenceText)}</textarea>
+          <small class="family-helper">${draft.source === "sample" ? "Reference transcript comes from a same-stem .txt file when available." : "Transcript is optional when uploading a reference WAV."}</small>
+        </label>
+        <div class="field-stack">
+          <label class="toggle-row">
+            <input data-role="chatterbox-show-advanced" type="checkbox" ${draft.showAdvanced ? "checked" : ""}>
+            <span>Advanced Chatterbox controls</span>
+          </label>
+          <div class="field-grid ${draft.showAdvanced ? "" : "hidden"}" data-visibility="chatterbox-advanced">
+            <label class="field">
+              <span>Guidance Scale</span>
+              <input data-role="chatterbox-advanced-input" data-key="guidance_scale" type="number" step="0.1" value="${escapeHtml(draft.guidanceScale)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Temperature</span>
+              <input data-role="chatterbox-advanced-input" data-key="temperature" type="number" step="0.1" value="${escapeHtml(draft.temperature)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Top P</span>
+              <input data-role="chatterbox-advanced-input" data-key="top_p" type="number" step="0.1" value="${escapeHtml(draft.topP)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Repetition Penalty</span>
+              <input data-role="chatterbox-advanced-input" data-key="repetition_penalty" type="number" step="0.1" value="${escapeHtml(draft.repetitionPenalty)}" placeholder="Optional">
+            </label>
+            <label class="toggle-row">
+              <input data-role="chatterbox-do-sample" type="checkbox" ${draft.doSample ? "checked" : ""}>
+              <span>Do Sample</span>
+            </label>
+          </div>
+        </div>
+      `;
+    },
+    readDraftFromDom(root, existingDraft) {
+      const draft = this.ensureDraft(existingDraft);
+      draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
+      draft.source = root.querySelector('[data-role="chatterbox-source"]:checked')?.value ?? draft.source;
+      draft.samplePath = root.querySelector('[data-role="voice-select"]')?.value ?? draft.samplePath;
+      draft.referenceText = root.querySelector('[data-role="chatterbox-reference-text"]')?.value ?? draft.referenceText;
+      draft.showAdvanced = root.querySelector('[data-role="chatterbox-show-advanced"]')?.checked ?? draft.showAdvanced;
+      draft.doSample = root.querySelector('[data-role="chatterbox-do-sample"]')?.checked ?? draft.doSample;
+      for (const input of root.querySelectorAll('[data-role="chatterbox-advanced-input"]')) {
+        const key = input.dataset.key;
+        const value = input.value ?? "";
+        if (key === "guidance_scale") {
+          draft.guidanceScale = value;
+        }
+        if (key === "temperature") {
+          draft.temperature = value;
+        }
+        if (key === "top_p") {
+          draft.topP = value;
+        }
+        if (key === "repetition_penalty") {
+          draft.repetitionPenalty = value;
+        }
+      }
+      return draft;
+    },
+    serializeRequest(model, draft, shared, voiceCatalog) {
+      const advancedFields = {};
+      if (draft.guidanceScale !== "") {
+        advancedFields.guidance_scale = Number(draft.guidanceScale);
+      }
+      if (draft.temperature !== "") {
+        advancedFields.temperature = Number(draft.temperature);
+      }
+      if (draft.topP !== "") {
+        advancedFields.top_p = Number(draft.topP);
+      }
+      if (draft.repetitionPenalty !== "") {
+        advancedFields.repetition_penalty = Number(draft.repetitionPenalty);
+      }
+      advancedFields.do_sample = draft.doSample ? "true" : "false";
+
+      if (draft.source === "sample") {
+        return {
+          transport: "json",
+          payload: {
+            model: model.id,
+            input: draft.prompt.trim(),
+            voice_ref: draft.samplePath,
+            ...(draft.referenceText.trim() ? { reference_text: draft.referenceText.trim() } : {}),
+            ...shared,
+            ...advancedFields,
+          },
+        };
+      }
+
+      const formData = new FormData();
+      formData.append("model", model.id);
+      formData.append("input", draft.prompt.trim());
+      appendFields(formData, shared);
+      if (draft.uploadFile) {
+        formData.append("voice_ref", draft.uploadFile);
+      }
+      if (draft.referenceText.trim()) {
+        formData.append("reference_text", draft.referenceText.trim());
+      }
+      for (const [key, value] of Object.entries(advancedFields)) {
+        formData.append(key, String(value));
+      }
+      return {
+        transport: "multipart",
+        payload: formData,
+      };
+    },
+    validateDraft(draft, voiceCatalog) {
+      if (!draft.prompt.trim()) {
+        throw new Error("Enter text before submitting.");
+      }
+      if (draft.source === "sample" && !draft.samplePath) {
+        throw new Error("Choose a shared WAV sample for Chatterbox voice cloning.");
+      }
+      if (draft.source === "sample" && !findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text?.trim()) {
+        throw new Error("The selected Chatterbox shared sample does not have reference text. Add a same-stem .txt file or use upload mode.");
+      }
+      if (draft.source === "upload" && !draft.uploadFile) {
+        throw new Error("Upload a WAV file for Chatterbox voice cloning.");
+      }
+    },
+  },
   omnivoice: {
     promptLabel: "Input Text",
     promptRows: 7,
@@ -825,6 +1013,10 @@ export function updateFamilyDraftFile(model, draft, role, index, file) {
     return nextDraft;
   }
   if (spec === FAMILY_SPECS.omnivoice && role === "omnivoice-upload-file") {
+    nextDraft.uploadFile = file ?? null;
+    return nextDraft;
+  }
+  if (spec === FAMILY_SPECS.chatterbox && role === "chatterbox-upload-file") {
     nextDraft.uploadFile = file ?? null;
     return nextDraft;
   }

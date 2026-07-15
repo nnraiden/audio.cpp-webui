@@ -15,6 +15,7 @@ export const elements = {
   ttsFamilyFields: document.querySelector("#tts-family-fields"),
   ttsSeed: document.querySelector("#tts-seed"),
   ttsMaxTokens: document.querySelector("#tts-max-tokens"),
+  ttsTextChunkSize: document.querySelector("#tts-text-chunk-size"),
   ttsResult: document.querySelector("#tts-result"),
   ttsAudio: document.querySelector("#tts-audio"),
   ttsDownload: document.querySelector("#tts-download"),

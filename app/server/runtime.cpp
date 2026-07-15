@@ -883,6 +883,7 @@ engine::runtime::TaskRequest ServerState::build_speech_request(const LoadedModel
 
     request.options = options_from_object(body.find("options"));
     add_option_from_json(request.options, body, "seed", "seed");
+    add_option_from_json(request.options, body, "text_chunk_size", "text_chunk_size");
     add_option_from_json(request.options, body, "temperature", "temperature");
     add_option_from_json(request.options, body, "top_k", "top_k");
     add_option_from_json(request.options, body, "top_p", "top_p");

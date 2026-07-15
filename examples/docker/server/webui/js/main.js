@@ -91,6 +91,9 @@ async function handleTtsSubmit(event) {
   if (elements.ttsMaxTokens.value) {
     sharedFields.max_tokens = Number(elements.ttsMaxTokens.value);
   }
+  if (elements.ttsTextChunkSize.value) {
+    sharedFields.text_chunk_size = Number(elements.ttsTextChunkSize.value);
+  }
 
   logEvent(`Submitting TTS request for ${model.id}.`);
   try {

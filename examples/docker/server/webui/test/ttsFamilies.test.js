@@ -27,6 +27,25 @@ const OMNIVOICE_CATALOG = {
   ],
 };
 
+const CHATTERBOX_MODEL = {
+  id: "chatterbox",
+  family: "chatterbox",
+  task: "clon",
+  mode: "offline",
+};
+
+const CHATTERBOX_CATALOG = {
+  voices: [],
+  presets: [],
+  samples: [
+    {
+      id: "shared/voice",
+      path: "/srv/shared/voice.wav",
+      transcript_text: "Shared voice transcript",
+    },
+  ],
+};
+
 function formEntries(formData) {
   return Array.from(formData.entries()).map(([key, value]) => [key, value instanceof File ? value.name : value]);
 }
@@ -242,12 +261,157 @@ function testOmniVoiceTranscriptValidation() {
   );
 }
 
+function testChatterboxRendering() {
+  const baseDraft = ensureFamilyDraft(CHATTERBOX_MODEL, null);
+
+  const html = renderFamilyFields(CHATTERBOX_MODEL, baseDraft, CHATTERBOX_CATALOG);
+  assert.match(html, /Shared WAV Sample/);
+  assert.match(html, /Upload WAV/);
+  assert.match(html, /Reference Transcript/);
+  assert.match(html, /Advanced Chatterbox controls/);
+  assert.match(html, /Guidance Scale/);
+  assert.match(html, /Temperature/);
+  assert.match(html, /Top P/);
+  assert.match(html, /Repetition Penalty/);
+  assert.match(html, /Do Sample/);
+
+  const sampleDraft = ensureFamilyDraft(CHATTERBOX_MODEL, {
+    ...baseDraft,
+    samplePath: "/srv/shared/voice.wav",
+  });
+  const sampleHtml = renderFamilyFields(CHATTERBOX_MODEL, sampleDraft, CHATTERBOX_CATALOG);
+  assert.match(sampleHtml, />Reference transcript comes from a same-stem .txt file/);
+  assert.match(sampleHtml, /readonly/);
+
+  const uploadDraft = ensureFamilyDraft(CHATTERBOX_MODEL, {
+    ...baseDraft,
+    source: "upload",
+    referenceText: "Upload transcript",
+  });
+  const uploadHtml = renderFamilyFields(CHATTERBOX_MODEL, uploadDraft, CHATTERBOX_CATALOG);
+  assert.match(uploadHtml, />Transcript is optional when uploading/);
+  assert.doesNotMatch(uploadHtml, /data-role="chatterbox-reference-text"[^>]*readonly/);
+}
+
+function testChatterboxSerialization() {
+  const sharedDraft = ensureFamilyDraft(CHATTERBOX_MODEL, {
+    prompt: "Hello from Chatterbox.",
+    source: "sample",
+    samplePath: "/srv/shared/voice.wav",
+    showAdvanced: true,
+    guidanceScale: "0.7",
+    temperature: "0.9",
+    topP: "0.7",
+    repetitionPenalty: "1.5",
+    doSample: true,
+  });
+  const sharedRequest = buildSpeechRequest(
+    CHATTERBOX_MODEL,
+    sharedDraft,
+    { seed: 42, max_tokens: 500 },
+    CHATTERBOX_CATALOG
+  );
+  assert.equal(sharedRequest.transport, "json");
+  assert.deepEqual(sharedRequest.payload, {
+    model: "chatterbox",
+    input: "Hello from Chatterbox.",
+    voice_ref: "/srv/shared/voice.wav",
+    seed: 42,
+    max_tokens: 500,
+    guidance_scale: 0.7,
+    temperature: 0.9,
+    top_p: 0.7,
+    repetition_penalty: 1.5,
+    do_sample: "true",
+  });
+
+  const uploadFile = new File(["RIFF"], "voice.wav", { type: "audio/wav" });
+  const uploadDraft = updateFamilyDraftFile(
+    CHATTERBOX_MODEL,
+    ensureFamilyDraft(CHATTERBOX_MODEL, {
+      prompt: "Upload prompt",
+      source: "upload",
+      referenceText: "Upload transcript",
+      showAdvanced: true,
+      guidanceScale: "0.5",
+      temperature: "0.8",
+      topP: "0.8",
+      repetitionPenalty: "2.0",
+      doSample: true,
+    }),
+    "chatterbox-upload-file",
+    null,
+    uploadFile
+  );
+  const uploadRequest = buildSpeechRequest(CHATTERBOX_MODEL, uploadDraft, { seed: 13 }, CHATTERBOX_CATALOG);
+  assert.equal(uploadRequest.transport, "multipart");
+  assert.deepEqual(formEntries(uploadRequest.payload), [
+    ["model", "chatterbox"],
+    ["input", "Upload prompt"],
+    ["seed", "13"],
+    ["voice_ref", "voice.wav"],
+    ["reference_text", "Upload transcript"],
+    ["guidance_scale", "0.5"],
+    ["temperature", "0.8"],
+    ["top_p", "0.8"],
+    ["repetition_penalty", "2"],
+    ["do_sample", "true"],
+  ]);
+}
+
+function testChatterboxValidation() {
+  assert.throws(
+    () => buildSpeechRequest(
+      CHATTERBOX_MODEL,
+      ensureFamilyDraft(CHATTERBOX_MODEL, {
+        prompt: "",
+        source: "sample",
+        samplePath: "",
+      }),
+      {},
+      CHATTERBOX_CATALOG
+    ),
+    /Enter text before submitting/
+  );
+
+  assert.throws(
+    () => buildSpeechRequest(
+      CHATTERBOX_MODEL,
+      ensureFamilyDraft(CHATTERBOX_MODEL, {
+        prompt: "Hello.",
+        source: "sample",
+        samplePath: "/srv/shared/missing.wav",
+      }),
+      {},
+      { voices: [], presets: [], samples: [{ id: "missing", path: "/srv/shared/missing.wav", transcript_text: null }] }
+    ),
+    /shared sample does not have reference text/
+  );
+
+  assert.throws(
+    () => buildSpeechRequest(
+      CHATTERBOX_MODEL,
+      ensureFamilyDraft(CHATTERBOX_MODEL, {
+        prompt: "Hello.",
+        source: "upload",
+        uploadFile: null,
+      }),
+      {},
+      CHATTERBOX_CATALOG
+    ),
+    /Upload a WAV file for Chatterbox/
+  );
+}
+
 function main() {
   testOmniVoiceCloneRendering();
   testOmniVoicePanelHint();
   testOmniVoiceDesignAndAdvancedRendering();
   testOmniVoiceSerialization();
   testOmniVoiceTranscriptValidation();
+  testChatterboxRendering();
+  testChatterboxSerialization();
+  testChatterboxValidation();
   console.log("ttsFamilies test passed");
 }
 
