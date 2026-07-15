@@ -8,6 +8,7 @@ export const state = {
   },
   ttsAudioUrl: null,
   generationAudioUrl: null,
+  ttsStreamingEnabled: false,
   familyDrafts: {},
 };
 
@@ -46,6 +47,10 @@ export function setGenerationAudioUrl(nextUrl) {
     URL.revokeObjectURL(state.generationAudioUrl);
   }
   state.generationAudioUrl = nextUrl;
+}
+
+export function setTtsStreamingEnabled(enabled) {
+  state.ttsStreamingEnabled = Boolean(enabled);
 }
 
 export function getFamilyDraft(key) {

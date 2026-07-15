@@ -1,10 +1,93 @@
-import { fetchHealth, fetchModels, fetchVoices, runGeneration, synthesizeSpeech, transcribeAudio } from "./api.js";
+import { fetchHealth, fetchModels, fetchVoices, runGeneration, synthesizeSpeech, synthesizeSpeechStream, transcribeAudio } from "./api.js";
 import { elements } from "./dom.js";
 import { isGenerationModel, isSpeechModel } from "./modelTasks.js";
 import { buildGenerationRequest, ensureGenerationDraft, readGenerationDraftFromDom, updateGenerationDraftFile } from "./genFamilies.js";
 import { clearOutputs, logEvent, renderAsrResult, renderGenerationFamilyForm, renderGenerationResult, renderHealth, renderHealthError, renderModels, renderTtsFamilyForm, renderTtsResult } from "./ui.js";
-import { getFamilyDraft, getSelectedModel, setFamilyDraft, setGenerationAudioUrl, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog, state } from "./state.js";
+import { getFamilyDraft, getSelectedModel, setFamilyDraft, setGenerationAudioUrl, setModels, setSelectedModelId, setTtsAudioUrl, setTtsStreamingEnabled, setVoiceCatalog, state } from "./state.js";
 import { buildSpeechRequest, ensureFamilyDraft, readFamilyDraftFromDom, updateFamilyDraftFile } from "./ttsFamilies.js";
+
+let activeTtsStream = null;
+let activeTtsPlayer = null;
+
+function createStreamingAudioPlayer() {
+  const AudioContextCtor = globalThis.AudioContext ?? globalThis.webkitAudioContext;
+  if (!AudioContextCtor) {
+    throw new Error("This browser does not support AudioContext streaming playback.");
+  }
+
+  const context = new AudioContextCtor();
+  let nextTime = 0;
+  let closed = false;
+  let closeTimer = null;
+
+  return {
+    async appendChunk({ pcm, sampleRate, channels }) {
+      if (closed) {
+        return;
+      }
+      if (context.state === "suspended") {
+        await context.resume();
+      }
+
+      const pcmCopy = pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength);
+      const samples = new Int16Array(pcmCopy);
+      const frameCount = samples.length / channels;
+      const audioBuffer = context.createBuffer(channels, frameCount, sampleRate);
+
+      for (let channel = 0; channel < channels; channel += 1) {
+        const output = audioBuffer.getChannelData(channel);
+        for (let frame = 0; frame < frameCount; frame += 1) {
+          output[frame] = samples[frame * channels + channel] / 32768;
+        }
+      }
+
+      const source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(context.destination);
+      nextTime = Math.max(nextTime, context.currentTime + 0.02);
+      source.start(nextTime);
+      nextTime += audioBuffer.duration;
+    },
+    async close() {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      if (closeTimer !== null) {
+        globalThis.clearTimeout(closeTimer);
+      }
+      await context.close();
+    },
+    finish(onClosed) {
+      if (closed || closeTimer !== null) {
+        return;
+      }
+      const delayMs = Math.max(0, ((nextTime - context.currentTime) * 1000) + 250);
+      closeTimer = globalThis.setTimeout(() => {
+        this.close()
+          .catch(() => {})
+          .finally(() => {
+            onClosed?.();
+          });
+      }, delayMs);
+    },
+  };
+}
+
+async function disposeActiveTtsStream() {
+  if (activeTtsStream) {
+    activeTtsStream.abortController.abort();
+  }
+  if (activeTtsPlayer) {
+    try {
+      await activeTtsPlayer.close();
+    } catch {
+      // Ignore cleanup errors during stream replacement.
+    }
+  }
+  activeTtsStream = null;
+  activeTtsPlayer = null;
+}
 
 async function loadHealth() {
   try {
@@ -89,6 +172,7 @@ async function syncVoices() {
 }
 
 async function refreshAll() {
+  await disposeActiveTtsStream();
   clearOutputs();
   await loadHealth();
   await loadModels();
@@ -117,13 +201,48 @@ async function handleTtsSubmit(event) {
 
   logEvent(`Submitting TTS request for ${model.id}.`);
   try {
-    const result = await synthesizeSpeech(buildSpeechRequest(model, draft, sharedFields, state.voiceCatalog));
+    await disposeActiveTtsStream();
+    const request = buildSpeechRequest(model, draft, sharedFields, state.voiceCatalog);
+    const shouldStream = state.ttsStreamingEnabled && model.mode === "streaming";
+
+    if (shouldStream) {
+      const player = createStreamingAudioPlayer();
+      activeTtsPlayer = player;
+      const abortController = new globalThis.AbortController();
+      activeTtsStream = { abortController, player };
+      logEvent(`Streaming TTS audio for ${model.id}.`);
+      const result = await synthesizeSpeechStream(request, {
+        signal: abortController.signal,
+        onChunk: async (chunk) => {
+          await player.appendChunk(chunk);
+        },
+      });
+      const audioUrl = URL.createObjectURL(result.blob);
+      setTtsAudioUrl(audioUrl);
+      renderTtsResult({ audioUrl, metrics: result.metrics });
+      logEvent(`Streaming TTS request for ${model.id} completed.`);
+      player.finish(() => {
+        if (activeTtsPlayer === player) {
+          activeTtsPlayer = null;
+        }
+      });
+      activeTtsStream = null;
+      return;
+    }
+
+    const result = await synthesizeSpeech(request);
     const audioUrl = URL.createObjectURL(result.blob);
     setTtsAudioUrl(audioUrl);
     renderTtsResult({ audioUrl, metrics: result.metrics });
     logEvent(`TTS request for ${model.id} completed.`);
   } catch (error) {
-    logEvent(`TTS request failed: ${error.message}`);
+    if (error.name === "AbortError") {
+      logEvent(`TTS request for ${model.id} was cancelled.`);
+    } else {
+      logEvent(`TTS request failed: ${error.message}`);
+    }
+    activeTtsStream = null;
+    activeTtsPlayer = null;
   }
 }
 
@@ -186,6 +305,14 @@ function attachEvents() {
     elements.eventLog.textContent = "Log cleared.";
   });
 
+  elements.ttsPanelTools.addEventListener("change", (event) => {
+    if (event.target.dataset.role !== "tts-streaming-toggle") {
+      return;
+    }
+    setTtsStreamingEnabled(event.target.checked);
+    renderModels();
+  });
+
   elements.modelSelect.addEventListener("change", async (event) => {
     const model = getSelectedModel();
     if (isSpeechModel(model)) {
@@ -194,6 +321,7 @@ function attachEvents() {
       setFamilyDraft(currentFamilyKey(), readCurrentGenerationDraft());
     }
     setSelectedModelId(event.target.value);
+    await disposeActiveTtsStream();
     clearOutputs();
     renderModels();
     syncTtsFamilyForm();

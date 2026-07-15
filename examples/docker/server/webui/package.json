@@ -4,8 +4,11 @@
   "version": "0.1.0",
   "description": "Separate web UI for testing audiocpp models through an app-local proxy.",
   "scripts": {
-    "lint": "npx --yes eslint@9 .",
+    "lint": "eslint .",
     "start": "node server.js",
     "test": "node test/smoke.cjs && node --experimental-default-type=module test/ttsFamilies.test.js && node --experimental-default-type=module test/genFamilies.test.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.31.0"
   }
 }

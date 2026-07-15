@@ -10,6 +10,13 @@ const OMNIVOICE_MODEL = {
   mode: "offline",
 };
 
+const STREAMING_TTS_MODEL = {
+  id: "vox-stream",
+  family: "default",
+  task: "tts",
+  mode: "streaming",
+};
+
 const KOKORO_MODEL = {
   id: "kokoro",
   family: "kokoro_tts",
@@ -50,7 +57,13 @@ const CHATTERBOX_MODEL = {
 
 const CHATTERBOX_CATALOG = {
   voices: [],
-  presets: [],
+  presets: [
+    {
+      id: "assistant",
+      voice_ref: "/srv/presets/chatterbox.wav",
+      reference_text: "Preset transcript",
+    },
+  ],
   samples: [
     {
       id: "shared/voice",
@@ -76,12 +89,43 @@ const MOSS_NANO_MODEL = {
 
 const MOSS_CATALOG = {
   voices: [],
-  presets: [],
+  presets: [
+    {
+      id: "assistant",
+      voice_ref: "/srv/presets/moss.wav",
+      reference_text: "Preset transcript",
+    },
+  ],
   samples: [
     {
       id: "shared/moss_voice",
       path: "/srv/shared/moss_voice.wav",
       transcript_text: "MOSS voice transcript",
+    },
+  ],
+};
+
+const POCKET_MODEL = {
+  id: "pocket-tts",
+  family: "pocket_tts",
+  task: "tts",
+  mode: "offline",
+};
+
+const POCKET_CATALOG = {
+  voices: ["builtin_voice", "assistant"],
+  presets: [
+    {
+      id: "assistant",
+      voice_ref: "/srv/presets/pocket.wav",
+      reference_text: null,
+    },
+  ],
+  samples: [
+    {
+      id: "shared/pocket_voice",
+      path: "/srv/shared/pocket_voice.wav",
+      transcript_text: null,
     },
   ],
 };
@@ -96,9 +140,6 @@ function testKokoroRendering() {
   assert.match(html, /Select voice/);
   assert.match(html, /af_heart/);
   assert.match(html, /bf_isabella/);
-  assert.match(html, /Language/);
-  assert.match(html, /a \(American English\)/);
-  assert.match(html, /b \(British English\)/);
   assert.match(html, /Kokoro uses built-in packaged voices only/);
 }
 
@@ -106,7 +147,6 @@ function testKokoroSerialization() {
   const draft = ensureFamilyDraft(KOKORO_MODEL, {
     prompt: "Hello from Kokoro.",
     voice: "af_heart",
-    language: "b",
   });
   const request = buildSpeechRequest(KOKORO_MODEL, draft, { seed: 11, text_chunk_size: 240 }, KOKORO_CATALOG);
   assert.equal(request.transport, "json");
@@ -114,7 +154,6 @@ function testKokoroSerialization() {
     model: "kokoro",
     input: "Hello from Kokoro.",
     voice: "af_heart",
-    language: "b",
     seed: 11,
     text_chunk_size: 240,
   });
@@ -180,6 +219,13 @@ function testOmniVoicePanelHint() {
   assert.match(html, /\[question-en\]/);
   assert.match(html, /\[dissatisfaction-hnn\]/);
   assert.equal(renderFamilyPanelTools({ id: "pocket", family: "pocket_tts" }), "");
+}
+
+function testStreamingPanelToggle() {
+  const html = renderFamilyPanelTools(STREAMING_TTS_MODEL, { ttsStreamingEnabled: true });
+  assert.match(html, /Stream Audio/);
+  assert.match(html, /data-role="tts-streaming-toggle"/);
+  assert.match(html, /checked/);
 }
 
 function testOmniVoiceDesignAndAdvancedRendering() {
@@ -357,7 +403,9 @@ function testChatterboxRendering() {
   const baseDraft = ensureFamilyDraft(CHATTERBOX_MODEL, null);
 
   const html = renderFamilyFields(CHATTERBOX_MODEL, baseDraft, CHATTERBOX_CATALOG);
+  assert.match(html, /Reference Source/);
   assert.match(html, /Shared WAV Sample/);
+  assert.match(html, /Preset/);
   assert.match(html, /Upload WAV/);
   assert.match(html, /Reference Transcript/);
   assert.match(html, /Language/);
@@ -376,6 +424,15 @@ function testChatterboxRendering() {
   const sampleHtml = renderFamilyFields(CHATTERBOX_MODEL, sampleDraft, CHATTERBOX_CATALOG);
   assert.match(sampleHtml, />Reference transcript comes from a same-stem .txt file/);
   assert.match(sampleHtml, /readonly/);
+
+  const presetDraft = ensureFamilyDraft(CHATTERBOX_MODEL, {
+    ...baseDraft,
+    source: "preset",
+    presetId: "assistant",
+  });
+  const presetHtml = renderFamilyFields(CHATTERBOX_MODEL, presetDraft, CHATTERBOX_CATALOG);
+  assert.match(presetHtml, />Preset transcript</);
+  assert.match(presetHtml, /readonly/);
 
   const uploadDraft = ensureFamilyDraft(CHATTERBOX_MODEL, {
     ...baseDraft,
@@ -420,6 +477,34 @@ function testChatterboxSerialization() {
     top_p: 0.7,
     repetition_penalty: 1.5,
     do_sample: "true",
+  });
+
+  const presetDraft = ensureFamilyDraft(CHATTERBOX_MODEL, {
+    prompt: "Preset prompt",
+    source: "preset",
+    presetId: "assistant",
+    language: "fr",
+    showAdvanced: true,
+    guidanceScale: "0.6",
+    temperature: "0.7",
+    topP: "0.8",
+    repetitionPenalty: "1.4",
+    doSample: false,
+  });
+  const presetRequest = buildSpeechRequest(CHATTERBOX_MODEL, presetDraft, { seed: 7 }, CHATTERBOX_CATALOG);
+  assert.equal(presetRequest.transport, "json");
+  assert.deepEqual(presetRequest.payload, {
+    model: "chatterbox",
+    input: "Preset prompt",
+    voice: "assistant",
+    language: "fr",
+    reference_text: "Preset transcript",
+    seed: 7,
+    guidance_scale: 0.6,
+    temperature: 0.7,
+    top_p: 0.8,
+    repetition_penalty: 1.4,
+    do_sample: "false",
   });
 
   const uploadFile = new File(["RIFF"], "voice.wav", { type: "audio/wav" });
@@ -478,6 +563,20 @@ function testChatterboxValidation() {
       CHATTERBOX_MODEL,
       ensureFamilyDraft(CHATTERBOX_MODEL, {
         prompt: "Hello.",
+        source: "preset",
+        presetId: "",
+      }),
+      {},
+      CHATTERBOX_CATALOG
+    ),
+    /Choose a preset for Chatterbox/
+  );
+
+  assert.throws(
+    () => buildSpeechRequest(
+      CHATTERBOX_MODEL,
+      ensureFamilyDraft(CHATTERBOX_MODEL, {
+        prompt: "Hello.",
         source: "upload",
         uploadFile: null,
       }),
@@ -525,9 +624,20 @@ function testMossCloneRendering() {
     textChunkMode: "tag_aware",
   });
   const html = renderFamilyFields(MOSS_LOCAL_MODEL, draft, MOSS_CATALOG);
+  assert.match(html, /Reference Source/);
+  assert.match(html, /Preset/);
   assert.match(html, />Reference transcript comes from a same-stem .txt file/);
   assert.match(html, /readonly/);
   assert.match(html, /<option value="tag_aware" selected>tag_aware<\/option>/);
+
+  const presetDraft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+    mode: "clone",
+    source: "preset",
+    presetId: "assistant",
+  });
+  const presetHtml = renderFamilyFields(MOSS_LOCAL_MODEL, presetDraft, MOSS_CATALOG);
+  assert.match(presetHtml, />Preset transcript</);
+  assert.match(presetHtml, /readonly/);
 
   const uploadDraft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
     mode: "clone",
@@ -608,6 +718,19 @@ function testMossCloneSerialization() {
     text_top_p: 0.95,
     text_top_k: 45,
   });
+
+  const presetDraft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+    prompt: "Preset clone prompt.",
+    mode: "clone",
+    source: "preset",
+    presetId: "assistant",
+    doSample: false,
+  });
+  const presetRequest = buildSpeechRequest(MOSS_LOCAL_MODEL, presetDraft, { seed: 55 }, MOSS_CATALOG);
+  assert.equal(presetRequest.transport, "json");
+  assert.equal(presetRequest.payload.voice, "assistant");
+  assert.equal(presetRequest.payload.reference_text, "Preset transcript");
+  assert.equal(presetRequest.payload.seed, 55);
 
   const noTranscriptRequest = buildSpeechRequest(
     MOSS_LOCAL_MODEL,
@@ -702,6 +825,21 @@ function testMossValidation() {
       ensureFamilyDraft(MOSS_LOCAL_MODEL, {
         prompt: "Hello.",
         mode: "clone",
+        source: "preset",
+        presetId: "",
+      }),
+      {},
+      MOSS_CATALOG
+    ),
+    /Choose a preset for MOSS/
+  );
+
+  assert.throws(
+    () => buildSpeechRequest(
+      MOSS_LOCAL_MODEL,
+      ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+        prompt: "Hello.",
+        mode: "clone",
         source: "upload",
         uploadFile: null,
       }),
@@ -712,12 +850,56 @@ function testMossValidation() {
   );
 }
 
+function testPocketClonePresetRenderingAndSerialization() {
+  const baseDraft = ensureFamilyDraft(POCKET_MODEL, null);
+  const html = renderFamilyFields(POCKET_MODEL, baseDraft, POCKET_CATALOG);
+  assert.match(html, /Built-in\/Cached Voice/);
+  assert.match(html, /Clone from WAV/);
+  assert.match(html, /Reference Source/);
+  assert.match(html, /Shared WAV Sample/);
+  assert.match(html, /Preset/);
+
+  const presetDraft = ensureFamilyDraft(POCKET_MODEL, {
+    prompt: "Hello from Pocket.",
+    mode: "clone",
+    cloneSource: "preset",
+    clonePreset: "assistant",
+  });
+  const presetRequest = buildSpeechRequest(POCKET_MODEL, presetDraft, { seed: 5 }, POCKET_CATALOG);
+  assert.equal(presetRequest.transport, "json");
+  assert.deepEqual(presetRequest.payload, {
+    model: "pocket-tts",
+    input: "Hello from Pocket.",
+    voice: "assistant",
+    seed: 5,
+  });
+}
+
+function testPocketValidation() {
+  assert.throws(
+    () => buildSpeechRequest(
+      POCKET_MODEL,
+      ensureFamilyDraft(POCKET_MODEL, {
+        prompt: "Hello.",
+        mode: "clone",
+        cloneSource: "upload",
+        cloneSample: "",
+        clonePreset: "",
+      }),
+      {},
+      POCKET_CATALOG
+    ),
+    /Upload a WAV file for PocketTTS/
+  );
+}
+
 function main() {
   testKokoroRendering();
   testKokoroSerialization();
   testKokoroValidation();
   testOmniVoiceCloneRendering();
   testOmniVoicePanelHint();
+  testStreamingPanelToggle();
   testOmniVoiceDesignAndAdvancedRendering();
   testOmniVoiceSerialization();
   testOmniVoiceTranscriptValidation();
@@ -731,6 +913,8 @@ function main() {
   testMossCloneSerialization();
   testMossNanoDefaults();
   testMossValidation();
+  testPocketClonePresetRenderingAndSerialization();
+  testPocketValidation();
   console.log("ttsFamilies test passed");
 }
 

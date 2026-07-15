@@ -50,7 +50,9 @@ export function renderModels() {
   elements.ttsPanel.classList.toggle("hidden", !isTts);
   elements.genPanel.classList.toggle("hidden", !isGen);
   elements.asrPanel.classList.toggle("hidden", !isAsr);
-  elements.ttsPanelTools.innerHTML = isTts ? renderFamilyPanelTools(model) : "";
+  elements.ttsPanelTools.innerHTML = isTts
+    ? renderFamilyPanelTools(model, { ttsStreamingEnabled: state.ttsStreamingEnabled })
+    : "";
 }
 
 export function renderTtsFamilyForm(model, draft) {
@@ -65,6 +67,7 @@ function renderAudioResult(target, { audioUrl, metrics }) {
   target.audio.src = audioUrl;
   target.download.href = audioUrl;
   target.metrics.innerHTML = renderMetricItems({
+    "TTFT ms": metrics.ttftMs,
     "Wall ms": metrics.wallMs,
     "Audio ms": metrics.audioDurationMs,
     "RTF": metrics.rtf,

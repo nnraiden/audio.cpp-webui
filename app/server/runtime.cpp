@@ -909,7 +909,7 @@ const ServerState::LoadedModel::RuntimeVoicePreset * ServerState::select_voice_p
         }
         return nullptr;
     }
-    if (body.find("voice_ref") != nullptr) {
+    if (body.find("voice_ref") != nullptr || body.find("voice_samples") != nullptr) {
         return nullptr;
     }
     return model.default_voice_preset.has_value() ? &*model.default_voice_preset : nullptr;
@@ -1140,6 +1140,8 @@ HttpResponse ServerState::handle_speech_stream(
                         writer,
                         "{\"type\":\"speech.audio.delta\",\"audio\":" +
                             json_quote(base64_encode(pcm)) +
+                            ",\"sample_rate\":" + std::to_string(audio.sample_rate) +
+                            ",\"channels\":" + std::to_string(audio.channels) +
                             "}");
                     wrote_audio = true;
                 }

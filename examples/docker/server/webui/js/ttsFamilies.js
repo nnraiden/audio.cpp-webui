@@ -23,11 +23,6 @@ const OMNIVOICE_TAGS = [
 
 const OMNIVOICE_INSTRUCTION_EXAMPLE = "female, young adult, moderate pitch, british accent";
 const CHATTERBOX_LANGUAGES = ["en", "de", "fr", "es", "it", "pt", "pl", "tr", "ja", "zh"];
-const KOKORO_LANGUAGES = [
-  { value: "a", label: "a (American English)" },
-  { value: "b", label: "b (British English)" },
-];
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -196,6 +191,7 @@ function renderSpeakerRows(draft, voiceCatalog) {
 function renderPocketCloneMode(draft, voiceCatalog) {
   const uploadName = draft.cloneFile?.name ?? "No file selected";
   const sampleOptions = makeSampleOptions(voiceCatalog);
+  const presetOptions = makePresetOptions(voiceCatalog);
   return `
     <div class="segmented-control" role="radiogroup" aria-label="PocketTTS voice mode">
       <label class="segment-option">
@@ -211,8 +207,27 @@ function renderPocketCloneMode(draft, voiceCatalog) {
       ${renderVoiceSelect("Voice", makeServerVoiceOptions(voiceCatalog), draft.voice, "Default")}
     </div>
     <div class="field-stack ${draft.mode === "clone" ? "" : "hidden"}" data-visibility="pocket-clone-mode">
-      ${renderVoiceSelect("Shared WAV Sample", sampleOptions, draft.cloneSample, "Select shared sample")}
       <label class="field">
+        <span>Reference Source</span>
+        <select data-role="pocket-clone-source">
+          <option value="sample" ${draft.cloneSource === "sample" ? "selected" : ""}>Shared WAV Sample</option>
+          <option value="preset" ${draft.cloneSource === "preset" ? "selected" : ""}>Preset</option>
+          <option value="upload" ${draft.cloneSource === "upload" ? "selected" : ""}>Upload WAV</option>
+        </select>
+      </label>
+      <label class="field ${draft.cloneSource === "sample" ? "" : "hidden"}" data-visibility="pocket-clone-source-sample">
+        <span>Shared WAV Sample</span>
+        <select data-role="pocket-clone-sample">
+          ${renderSelectOptions(sampleOptions, draft.cloneSample, "Select shared sample")}
+        </select>
+      </label>
+      <label class="field ${draft.cloneSource === "preset" ? "" : "hidden"}" data-visibility="pocket-clone-source-preset">
+        <span>Preset</span>
+        <select data-role="pocket-clone-preset">
+          ${renderSelectOptions(presetOptions, draft.clonePreset, "Select preset")}
+        </select>
+      </label>
+      <label class="field ${draft.cloneSource === "upload" ? "" : "hidden"}" data-visibility="pocket-clone-source-upload">
         <span>Or Upload Local WAV</span>
         <input data-role="pocket-clone-file" type="file" accept=".wav,audio/wav">
         <small>${escapeHtml(uploadName)}</small>
@@ -314,6 +329,50 @@ function renderOmniVoiceCloneMode(draft, voiceCatalog) {
   `;
 }
 
+function resolveChatterboxTranscriptState(draft, voiceCatalog) {
+  if (draft.source === "sample") {
+    return {
+      value: sampleTranscriptText(voiceCatalog, draft.samplePath),
+      readOnly: true,
+      helper: "Reference transcript comes from a same-stem .txt file when available.",
+    };
+  }
+  if (draft.source === "preset") {
+    return {
+      value: findPresetById(voiceCatalog, draft.presetId)?.reference_text ?? "",
+      readOnly: true,
+      helper: "Reference transcript comes from the configured server preset when available.",
+    };
+  }
+  return {
+    value: draft.referenceText,
+    readOnly: false,
+    helper: "Transcript is optional when uploading a reference WAV.",
+  };
+}
+
+function resolveMossTranscriptState(draft, voiceCatalog) {
+  if (draft.source === "sample") {
+    return {
+      value: findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text ?? "",
+      readOnly: true,
+      helper: "Reference transcript comes from a same-stem .txt file when available.",
+    };
+  }
+  if (draft.source === "preset") {
+    return {
+      value: findPresetById(voiceCatalog, draft.presetId)?.reference_text ?? "",
+      readOnly: true,
+      helper: "Reference transcript comes from the configured server preset when available.",
+    };
+  }
+  return {
+    value: draft.referenceText,
+    readOnly: false,
+    helper: "Transcript is optional when uploading a reference WAV.",
+  };
+}
+
 function renderOmniVoiceAdvanced(draft) {
   const fields = makeAdvancedEntries(draft).map((entry) => `
     <label class="field">
@@ -413,7 +472,7 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
     helper: "",
     textMode: "plain_text",
     cloneMode: "single_wav_optional",
-    catalogSources: ["samples"],
+    catalogSources: ["samples", "presets"],
     localUpload: true,
     createDraft() {
       return {
@@ -421,6 +480,7 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
         mode: "text_only",
         source: "sample",
         samplePath: "",
+        presetId: "",
         uploadFile: null,
         referenceText: "",
         showAdvanced: false,
@@ -440,8 +500,9 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
       const draft = existingDraft ?? this.createDraft();
       draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
       draft.mode = draft.mode === "clone" ? "clone" : "text_only";
-      draft.source = draft.source === "upload" ? draft.source : "sample";
+      draft.source = draft.source === "preset" || draft.source === "upload" ? draft.source : "sample";
       draft.samplePath = typeof draft.samplePath === "string" ? draft.samplePath : "";
+      draft.presetId = typeof draft.presetId === "string" ? draft.presetId : "";
       draft.uploadFile = draft.uploadFile instanceof File ? draft.uploadFile : null;
       draft.referenceText = typeof draft.referenceText === "string" ? draft.referenceText : "";
       draft.showAdvanced = draft.showAdvanced === true;
@@ -458,7 +519,9 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
     },
     renderFields(draft, voiceCatalog) {
       const sampleOptions = makeSampleOptions(voiceCatalog);
+      const presetOptions = makePresetOptions(voiceCatalog);
       const uploadName = draft.uploadFile?.name ?? "No file selected";
+      const transcript = resolveMossTranscriptState(draft, voiceCatalog);
       const chunkModeOptions = MOSS_CHUNK_MODES
         .map((m) => `<option value="${m}" ${m === draft.textChunkMode ? "selected" : ""}>${m}</option>`)
         .join("");
@@ -475,30 +538,35 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
           </label>
         </div>
         <div class="field-stack ${draft.mode === "clone" ? "" : "hidden"}" data-visibility="moss-clone-panel">
-          <div class="segmented-control" role="radiogroup" aria-label="MOSS voice reference">
-            <label class="segment-option">
-              <input type="radio" name="moss-source" value="sample" data-role="moss-source" ${draft.source === "sample" ? "checked" : ""}>
-              <span>Shared WAV Sample</span>
-            </label>
-            <label class="segment-option">
-              <input type="radio" name="moss-source" value="upload" data-role="moss-source" ${draft.source === "upload" ? "checked" : ""}>
-              <span>Upload WAV</span>
-            </label>
-          </div>
-          <div class="field-stack ${draft.source === "sample" ? "" : "hidden"}" data-visibility="moss-source-sample">
-            ${renderVoiceSelect("Reference WAV", sampleOptions, draft.samplePath, "Select shared sample")}
-          </div>
-          <div class="field-stack ${draft.source === "upload" ? "" : "hidden"}" data-visibility="moss-source-upload">
-            <label class="field">
-              <span>Local WAV</span>
-              <input data-role="moss-upload-file" type="file" accept=".wav,audio/wav">
-              <small>${escapeHtml(uploadName)}</small>
-            </label>
-          </div>
-          <label class="field ${draft.source === "sample" ? "" : ""}" data-visibility="moss-reference-text">
+          <label class="field">
+            <span>Reference Source</span>
+            <select data-role="moss-source">
+              <option value="sample" ${draft.source === "sample" ? "selected" : ""}>Shared WAV Sample</option>
+              <option value="preset" ${draft.source === "preset" ? "selected" : ""}>Preset</option>
+              <option value="upload" ${draft.source === "upload" ? "selected" : ""}>Upload WAV</option>
+            </select>
+          </label>
+          <label class="field ${draft.source === "sample" ? "" : "hidden"}" data-visibility="moss-source-sample">
+            <span>Shared WAV Sample</span>
+            <select data-role="moss-sample-path">
+              ${renderSelectOptions(sampleOptions, draft.samplePath, "Select shared sample")}
+            </select>
+          </label>
+          <label class="field ${draft.source === "preset" ? "" : "hidden"}" data-visibility="moss-source-preset">
+            <span>Preset</span>
+            <select data-role="moss-preset-id">
+              ${renderSelectOptions(presetOptions, draft.presetId, "Select preset")}
+            </select>
+          </label>
+          <label class="field ${draft.source === "upload" ? "" : "hidden"}" data-visibility="moss-source-upload">
+            <span>Local WAV</span>
+            <input data-role="moss-upload-file" type="file" accept=".wav,audio/wav">
+            <small>${escapeHtml(uploadName)}</small>
+          </label>
+          <label class="field" data-visibility="moss-reference-text">
             <span>Reference Transcript</span>
-            <textarea data-role="moss-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${draft.source === "sample" ? "readonly" : ""}>${escapeHtml(draft.source === "sample" ? (findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text ?? "") : draft.referenceText)}</textarea>
-            <small class="family-helper">${draft.source === "sample" ? "Reference transcript comes from a same-stem .txt file when available." : "Transcript is optional when uploading a reference WAV."}</small>
+            <textarea data-role="moss-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${transcript.readOnly ? "readonly" : ""}>${escapeHtml(transcript.value)}</textarea>
+            <small class="family-helper">${escapeHtml(transcript.helper)}</small>
           </label>
         </div>
         <div class="field-grid">
@@ -557,8 +625,9 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
       const draft = this.ensureDraft(existingDraft);
       draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
       draft.mode = root.querySelector('[data-role="moss-mode"]:checked')?.value ?? draft.mode;
-      draft.source = root.querySelector('[data-role="moss-source"]:checked')?.value ?? draft.source;
-      draft.samplePath = root.querySelector('[data-role="voice-select"]')?.value ?? draft.samplePath;
+      draft.source = root.querySelector('[data-role="moss-source"]')?.value ?? draft.source;
+      draft.samplePath = root.querySelector('[data-role="moss-sample-path"]')?.value ?? draft.samplePath;
+      draft.presetId = root.querySelector('[data-role="moss-preset-id"]')?.value ?? draft.presetId;
       draft.referenceText = root.querySelector('[data-role="moss-reference-text"]')?.value ?? draft.referenceText;
       draft.showAdvanced = root.querySelector('[data-role="moss-show-advanced"]')?.checked ?? draft.showAdvanced;
       draft.doSample = root.querySelector('[data-role="moss-do-sample"]')?.checked ?? draft.doSample;
@@ -634,6 +703,18 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
           };
         }
 
+        if (draft.source === "preset") {
+          const referenceText = findPresetById(voiceCatalog, draft.presetId)?.reference_text?.trim() ?? "";
+          return {
+            transport: "json",
+            payload: {
+              ...payloadBase,
+              voice: draft.presetId,
+              ...(referenceText ? { reference_text: referenceText } : {}),
+            },
+          };
+        }
+
         const formData = new FormData();
         formData.append("model", model.id);
         formData.append("input", draft.prompt.trim());
@@ -674,13 +755,16 @@ function createMossSpec({ maxTokens, textTemperature, textTopP, textTopK }) {
         payload: payloadBase,
       };
     },
-    validateDraft(draft, voiceCatalog) {
+    validateDraft(draft) {
       if (!draft.prompt.trim()) {
         throw new Error("Enter text before submitting.");
       }
       if (draft.mode === "clone") {
         if (draft.source === "sample" && !draft.samplePath) {
           throw new Error("Choose a shared WAV sample for MOSS voice cloning.");
+        }
+        if (draft.source === "preset" && !draft.presetId) {
+          throw new Error("Choose a preset for MOSS voice cloning.");
         }
         if (draft.source === "upload" && !draft.uploadFile) {
           throw new Error("Upload a WAV file for MOSS voice cloning.");
@@ -801,37 +885,23 @@ const FAMILY_SPECS = {
     helper: "Kokoro uses built-in packaged voices only. Select a server-exposed voice id or preset name.",
     textMode: "plain_text",
     cloneMode: "none",
-    catalogSources: ["voices"],
+    catalogSources: ["voices", "presets"],
     localUpload: false,
     createDraft() {
       return {
         prompt: DEFAULT_TEXT,
         voice: "",
-        language: "a",
       };
     },
     ensureDraft(existingDraft) {
       const draft = existingDraft ?? this.createDraft();
       draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
       draft.voice = typeof draft.voice === "string" ? draft.voice : "";
-      draft.language = KOKORO_LANGUAGES.some((option) => option.value === draft.language) ? draft.language : "a";
       return draft;
     },
     renderFields(draft, voiceCatalog) {
-      const languageOptions = KOKORO_LANGUAGES
-        .map((option) => (
-          `<option value="${option.value}" ${option.value === draft.language ? "selected" : ""}>${escapeHtml(option.label)}</option>`
-        ))
-        .join("");
       return `
         ${renderVoiceSelect("Voice", makeServerVoiceOptions(voiceCatalog), draft.voice, "Select voice")}
-        <label class="field">
-          <span>Language</span>
-          <select data-role="kokoro-language">
-            ${languageOptions}
-          </select>
-          <small class="family-helper">Kokoro exposes <code>a</code> for American English and <code>b</code> for British English.</small>
-        </label>
         ${renderPromptField(this, draft)}
       `;
     },
@@ -839,7 +909,6 @@ const FAMILY_SPECS = {
       const draft = this.ensureDraft(existingDraft);
       draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
       draft.voice = root.querySelector('[data-role="voice-select"]')?.value ?? draft.voice;
-      draft.language = root.querySelector('[data-role="kokoro-language"]')?.value ?? draft.language;
       return draft;
     },
     serializeRequest(model, draft, shared) {
@@ -849,7 +918,6 @@ const FAMILY_SPECS = {
           model: model.id,
           input: draft.prompt.trim(),
           voice: draft.voice,
-          language: draft.language,
           ...shared,
         },
       };
@@ -878,7 +946,9 @@ const FAMILY_SPECS = {
         prompt: DEFAULT_TEXT,
         mode: "voice",
         voice: "",
+        cloneSource: "sample",
         cloneSample: "",
+        clonePreset: "",
         cloneFile: null,
       };
     },
@@ -887,7 +957,9 @@ const FAMILY_SPECS = {
       draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
       draft.mode = draft.mode === "clone" ? "clone" : "voice";
       draft.voice = typeof draft.voice === "string" ? draft.voice : "";
+      draft.cloneSource = draft.cloneSource === "preset" || draft.cloneSource === "upload" ? draft.cloneSource : "sample";
       draft.cloneSample = typeof draft.cloneSample === "string" ? draft.cloneSample : "";
+      draft.clonePreset = typeof draft.clonePreset === "string" ? draft.clonePreset : "";
       draft.cloneFile = draft.cloneFile instanceof File ? draft.cloneFile : null;
       return draft;
     },
@@ -902,7 +974,9 @@ const FAMILY_SPECS = {
       draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
       draft.mode = root.querySelector('[data-role="pocket-mode"]:checked')?.value === "clone" ? "clone" : "voice";
       draft.voice = root.querySelector('[data-role="voice-select"]')?.value ?? draft.voice;
-      draft.cloneSample = root.querySelector('[data-visibility="pocket-clone-mode"] [data-role="voice-select"]')?.value ?? draft.cloneSample;
+      draft.cloneSource = root.querySelector('[data-role="pocket-clone-source"]')?.value ?? draft.cloneSource;
+      draft.cloneSample = root.querySelector('[data-role="pocket-clone-sample"]')?.value ?? draft.cloneSample;
+      draft.clonePreset = root.querySelector('[data-role="pocket-clone-preset"]')?.value ?? draft.clonePreset;
       return draft;
     },
     serializeRequest(model, draft, shared) {
@@ -918,7 +992,7 @@ const FAMILY_SPECS = {
         };
       }
 
-      if (draft.cloneSample) {
+      if (draft.cloneSource === "sample" && draft.cloneSample) {
         return {
           transport: "json",
           payload: {
@@ -930,11 +1004,23 @@ const FAMILY_SPECS = {
         };
       }
 
+      if (draft.cloneSource === "preset" && draft.clonePreset) {
+        return {
+          transport: "json",
+          payload: {
+            model: model.id,
+            input: draft.prompt.trim(),
+            voice: draft.clonePreset,
+            ...shared,
+          },
+        };
+      }
+
       const formData = new FormData();
       formData.append("model", model.id);
       formData.append("input", draft.prompt.trim());
       appendFields(formData, shared);
-      if (draft.cloneFile) {
+      if (draft.cloneSource === "upload" && draft.cloneFile) {
         formData.append("voice_ref", draft.cloneFile);
       }
       return {
@@ -946,8 +1032,17 @@ const FAMILY_SPECS = {
       if (!draft.prompt.trim()) {
         throw new Error("Enter text before submitting.");
       }
-      if (draft.mode === "clone" && !draft.cloneSample && !draft.cloneFile) {
-        throw new Error("Choose a shared WAV sample or upload a WAV file for PocketTTS clone mode.");
+      if (draft.mode === "clone" && draft.cloneSource === "sample" && !draft.cloneSample) {
+        throw new Error("Choose a shared WAV sample for PocketTTS clone mode.");
+      }
+      if (draft.mode === "clone" && draft.cloneSource === "preset" && !draft.clonePreset) {
+        throw new Error("Choose a preset for PocketTTS clone mode.");
+      }
+      if (draft.mode === "clone" && draft.cloneSource === "upload" && !draft.cloneFile) {
+        throw new Error("Upload a WAV file for PocketTTS clone mode.");
+      }
+      if (draft.mode === "clone" && !draft.cloneSample && !draft.clonePreset && !draft.cloneFile) {
+        throw new Error("Choose a shared WAV sample, preset, or upload a WAV file for PocketTTS clone mode.");
       }
     },
   },
@@ -959,13 +1054,14 @@ const FAMILY_SPECS = {
     helper: "",
     textMode: "plain_text",
     cloneMode: "single_wav_required",
-    catalogSources: ["samples"],
+    catalogSources: ["samples", "presets"],
     localUpload: true,
     createDraft() {
       return {
         prompt: DEFAULT_TEXT,
         source: "sample",
         samplePath: "",
+        presetId: "",
         uploadFile: null,
         referenceText: "",
         showAdvanced: false,
@@ -980,8 +1076,9 @@ const FAMILY_SPECS = {
     ensureDraft(existingDraft) {
       const draft = existingDraft ?? this.createDraft();
       draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
-      draft.source = draft.source === "upload" ? draft.source : "sample";
+      draft.source = draft.source === "preset" || draft.source === "upload" ? draft.source : "sample";
       draft.samplePath = typeof draft.samplePath === "string" ? draft.samplePath : "";
+      draft.presetId = typeof draft.presetId === "string" ? draft.presetId : "";
       draft.uploadFile = draft.uploadFile instanceof File ? draft.uploadFile : null;
       draft.referenceText = typeof draft.referenceText === "string" ? draft.referenceText : "";
       draft.showAdvanced = draft.showAdvanced === true;
@@ -994,37 +1091,43 @@ const FAMILY_SPECS = {
     },
     renderFields(draft, voiceCatalog) {
       const sampleOptions = makeSampleOptions(voiceCatalog);
+      const presetOptions = makePresetOptions(voiceCatalog);
       const uploadName = draft.uploadFile?.name ?? "No file selected";
-      const sampleReferenceText = sampleTranscriptText(voiceCatalog, draft.samplePath);
+      const transcript = resolveChatterboxTranscriptState(draft, voiceCatalog);
       const languageOptions = CHATTERBOX_LANGUAGES
         .map((language) => `<option value="${language}" ${language === draft.language ? "selected" : ""}>${language}</option>`)
         .join("");
       return `
         ${renderPromptField(this, draft)}
-        <div class="segmented-control" role="radiogroup" aria-label="Chatterbox voice reference">
-          <label class="segment-option">
-            <input type="radio" name="chatterbox-source" value="sample" data-role="chatterbox-source" ${draft.source === "sample" ? "checked" : ""}>
-            <span>Shared WAV Sample</span>
-          </label>
-          <label class="segment-option">
-            <input type="radio" name="chatterbox-source" value="upload" data-role="chatterbox-source" ${draft.source === "upload" ? "checked" : ""}>
-            <span>Upload WAV</span>
-          </label>
-        </div>
-        <div class="field-stack ${draft.source === "sample" ? "" : "hidden"}" data-visibility="chatterbox-source-sample">
-          ${renderVoiceSelect("Reference WAV", sampleOptions, draft.samplePath, "Select shared sample")}
-        </div>
-        <div class="field-stack ${draft.source === "upload" ? "" : "hidden"}" data-visibility="chatterbox-source-upload">
-          <label class="field">
-            <span>Local WAV</span>
-            <input data-role="chatterbox-upload-file" type="file" accept=".wav,audio/wav">
-            <small>${escapeHtml(uploadName)}</small>
-          </label>
-        </div>
+        <label class="field">
+          <span>Reference Source</span>
+          <select data-role="chatterbox-source">
+            <option value="sample" ${draft.source === "sample" ? "selected" : ""}>Shared WAV Sample</option>
+            <option value="preset" ${draft.source === "preset" ? "selected" : ""}>Preset</option>
+            <option value="upload" ${draft.source === "upload" ? "selected" : ""}>Upload WAV</option>
+          </select>
+        </label>
+        <label class="field ${draft.source === "sample" ? "" : "hidden"}" data-visibility="chatterbox-source-sample">
+          <span>Shared WAV Sample</span>
+          <select data-role="chatterbox-sample-path">
+            ${renderSelectOptions(sampleOptions, draft.samplePath, "Select shared sample")}
+          </select>
+        </label>
+        <label class="field ${draft.source === "preset" ? "" : "hidden"}" data-visibility="chatterbox-source-preset">
+          <span>Preset</span>
+          <select data-role="chatterbox-preset-id">
+            ${renderSelectOptions(presetOptions, draft.presetId, "Select preset")}
+          </select>
+        </label>
+        <label class="field ${draft.source === "upload" ? "" : "hidden"}" data-visibility="chatterbox-source-upload">
+          <span>Local WAV</span>
+          <input data-role="chatterbox-upload-file" type="file" accept=".wav,audio/wav">
+          <small>${escapeHtml(uploadName)}</small>
+        </label>
         <label class="field" data-visibility="chatterbox-reference-text">
           <span>Reference Transcript</span>
-          <textarea data-role="chatterbox-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${draft.source === "sample" ? "readonly" : ""}>${escapeHtml(draft.source === "sample" ? sampleReferenceText : draft.referenceText)}</textarea>
-          <small class="family-helper">${draft.source === "sample" ? "Reference transcript comes from a same-stem .txt file when available." : "Transcript is optional when uploading a reference WAV."}</small>
+          <textarea data-role="chatterbox-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${transcript.readOnly ? "readonly" : ""}>${escapeHtml(transcript.value)}</textarea>
+          <small class="family-helper">${escapeHtml(transcript.helper)}</small>
         </label>
         <label class="field">
           <span>Language</span>
@@ -1065,8 +1168,9 @@ const FAMILY_SPECS = {
     readDraftFromDom(root, existingDraft) {
       const draft = this.ensureDraft(existingDraft);
       draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
-      draft.source = root.querySelector('[data-role="chatterbox-source"]:checked')?.value ?? draft.source;
-      draft.samplePath = root.querySelector('[data-role="voice-select"]')?.value ?? draft.samplePath;
+      draft.source = root.querySelector('[data-role="chatterbox-source"]')?.value ?? draft.source;
+      draft.samplePath = root.querySelector('[data-role="chatterbox-sample-path"]')?.value ?? draft.samplePath;
+      draft.presetId = root.querySelector('[data-role="chatterbox-preset-id"]')?.value ?? draft.presetId;
       draft.referenceText = root.querySelector('[data-role="chatterbox-reference-text"]')?.value ?? draft.referenceText;
       draft.language = root.querySelector('[data-role="chatterbox-language"]')?.value ?? draft.language;
       draft.showAdvanced = root.querySelector('[data-role="chatterbox-show-advanced"]')?.checked ?? draft.showAdvanced;
@@ -1092,6 +1196,7 @@ const FAMILY_SPECS = {
     serializeRequest(model, draft, shared, voiceCatalog) {
       const advancedFields = {};
       const sampleReferenceText = sampleTranscriptText(voiceCatalog, draft.samplePath).trim();
+      const presetReferenceText = findPresetById(voiceCatalog, draft.presetId)?.reference_text?.trim() ?? "";
       if (draft.guidanceScale !== "") {
         advancedFields.guidance_scale = Number(draft.guidanceScale);
       }
@@ -1121,6 +1226,21 @@ const FAMILY_SPECS = {
         };
       }
 
+      if (draft.source === "preset") {
+        return {
+          transport: "json",
+          payload: {
+            model: model.id,
+            input: draft.prompt.trim(),
+            voice: draft.presetId,
+            language: draft.language,
+            ...(presetReferenceText ? { reference_text: presetReferenceText } : {}),
+            ...shared,
+            ...advancedFields,
+          },
+        };
+      }
+
       const formData = new FormData();
       formData.append("model", model.id);
       formData.append("input", draft.prompt.trim());
@@ -1140,12 +1260,15 @@ const FAMILY_SPECS = {
         payload: formData,
       };
     },
-    validateDraft(draft, voiceCatalog) {
+    validateDraft(draft) {
       if (!draft.prompt.trim()) {
         throw new Error("Enter text before submitting.");
       }
       if (draft.source === "sample" && !draft.samplePath) {
         throw new Error("Choose a shared WAV sample for Chatterbox voice cloning.");
+      }
+      if (draft.source === "preset" && !draft.presetId) {
+        throw new Error("Choose a preset for Chatterbox voice cloning.");
       }
       if (draft.source === "upload" && !draft.uploadFile) {
         throw new Error("Upload a WAV file for Chatterbox voice cloning.");
@@ -1367,20 +1490,32 @@ export function renderFamilyFields(model, draft, voiceCatalog) {
   return getFamilySpec(model).renderFields(draft, voiceCatalog);
 }
 
-export function renderFamilyPanelTools(model) {
-  if (familyKey(model) !== "omnivoice") {
-    return "";
+export function renderFamilyPanelTools(model, options = {}) {
+  const parts = [];
+
+  if (model?.mode === "streaming") {
+    parts.push(`
+      <label class="toggle-row">
+        <input type="checkbox" data-role="tts-streaming-toggle" ${options.ttsStreamingEnabled ? "checked" : ""}>
+        <span>Stream Audio</span>
+      </label>
+    `);
   }
-  const tagList = OMNIVOICE_TAGS.map((tag) => `<code>${escapeHtml(tag)}</code>`).join("");
-  return `
-    <details class="panel-hint">
-      <summary>OmniVoice Tags</summary>
-      <div class="panel-hint-card">
-        <p>Insert tags directly in the input text.</p>
-        <div class="panel-tag-list">${tagList}</div>
-      </div>
-    </details>
-  `;
+
+  if (familyKey(model) === "omnivoice") {
+    const tagList = OMNIVOICE_TAGS.map((tag) => `<code>${escapeHtml(tag)}</code>`).join("");
+    parts.push(`
+      <details class="panel-hint">
+        <summary>OmniVoice Tags</summary>
+        <div class="panel-hint-card">
+          <p>Insert tags directly in the input text.</p>
+          <div class="panel-tag-list">${tagList}</div>
+        </div>
+      </details>
+    `);
+  }
+
+  return parts.join("");
 }
 
 export function readFamilyDraftFromDom(model, root, existingDraft) {
@@ -1393,6 +1528,8 @@ export function updateFamilyDraftFile(model, draft, role, index, file) {
   if (spec === FAMILY_SPECS.pocket_tts && role === "pocket-clone-file") {
     if (file) {
       nextDraft.cloneSample = "";
+      nextDraft.clonePreset = "";
+      nextDraft.cloneSource = "upload";
     }
     nextDraft.cloneFile = file ?? null;
     return nextDraft;
