@@ -1,16 +1,6 @@
 # audio.cpp
 
-This fork is maintained for my own local use. It stays close to upstream `audio.cpp`, adds a lightweight built-in Web UI path, and does not aim to become a broad downstream distribution with a separate product roadmap. The current Web UI is wired for `pocket_tts`, `vibevoice`, `omnivoice`, `chatterbox`, `moss_tts_local`, `moss_tts_nano`, `kokoro_tts`, and `ace_step`, with streaming playback support for TTS models exposed by the server in streaming mode.
-
-The Web UI layer is still being tested incrementally while models and controls are added. Expect rough edges, partial family coverage, and occasional UI churn. A significant amount of the integration work is being iterated quickly with heavy LLM assistance, so the UI surface should be treated as practical and evolving rather than fully stabilized.
-
-For the Web UI, set `"webui_root"` in `server.json`, start `audiocpp_server`, and open the server root in your browser. Docker example:
-
-```bash
-docker compose -f examples/docker/server/compose.podman.yml up --build
-```
-
-Then open `http://127.0.0.1:8880/`.
+This fork stays close to upstream `audio.cpp` and keeps only a small integrated Web UI and server-packaging layer on top. The Web UI surface is still being tested incrementally and may change as model-specific controls are refined. Fork-specific notes live under [examples/docker/server/WEBUI.md](examples/docker/server/WEBUI.md) and [docs/webui_backend.md](docs/webui_backend.md).
 
 `audio.cpp` is a high-performance C++ audio inference framework built on top of `ggml`, designed to make modern local audio models practical, portable, and fast.
 
