@@ -12,3 +12,4 @@ build/
 !examples/docker/server/
 !examples/docker/server/webui/
 !examples/docker/server/webui/**
+!tools/gguf_convert.cpp

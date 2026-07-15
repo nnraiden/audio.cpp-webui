@@ -481,7 +481,7 @@ const FAMILY_SPECS = {
         payload: formData,
       };
     },
-    validateDraft(draft, voiceCatalog) {
+    validateDraft(draft) {
       if (!draft.prompt.trim()) {
         throw new Error("Enter a speaker script before submitting.");
       }
@@ -575,7 +575,7 @@ const FAMILY_SPECS = {
         payload: formData,
       };
     },
-    validateDraft(draft, voiceCatalog) {
+    validateDraft(draft) {
       if (!draft.prompt.trim()) {
         throw new Error("Enter text before submitting.");
       }
