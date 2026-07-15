@@ -709,6 +709,47 @@ MultipartSpeechPayload build_speech_multipart_payload(const std::string & body_t
     return {Value::make_object(std::move(fields)), std::move(temp_uploads)};
 }
 
+struct MultipartGenericRunPayload {
+    Value body;
+    std::shared_ptr<void> temp_uploads;
+};
+
+MultipartGenericRunPayload build_generic_run_multipart_payload(const std::string & body_text, const std::string & boundary) {
+    const auto parts = parse_multipart_body(body_text, boundary);
+    auto temp_uploads = std::make_shared<std::vector<TempFileGuard>>();
+    Value::Object fields;
+
+    for (const auto & part : parts) {
+        if (!part.filename.empty()) {
+            if (part.data.empty()) {
+                throw std::runtime_error("multipart generic upload '" + part.name + "' must not be empty");
+            }
+            if (!is_wav_upload_filename(part.filename)) {
+                throw std::runtime_error("multipart generic uploads currently support WAV files only");
+            }
+            const auto temp_path = write_temp_upload(part.filename, part.data);
+            temp_uploads->push_back(TempFileGuard{temp_path});
+            if (part.name == "audio" ||
+                part.name == "voice_ref" ||
+                part.name == "target_voice" ||
+                part.name == "prosody_ref" ||
+                part.name == "style_ref") {
+                fields[part.name] = Value::make_string(temp_path.string());
+            } else {
+                throw std::runtime_error("unsupported multipart generic file field: " + part.name);
+            }
+            continue;
+        }
+        fields[part.name] = parse_multipart_json_field(part.name, part.data);
+    }
+
+    const auto model_it = fields.find("model");
+    if (model_it == fields.end() || !model_it->second.is_string() || model_it->second.as_string().empty()) {
+        throw std::runtime_error("multipart generic request requires a 'model' field");
+    }
+    return {Value::make_object(std::move(fields)), std::move(temp_uploads)};
+}
+
 }  // namespace
 
 ServerState::ServerState(ServerConfig config, std::filesystem::path request_base)
@@ -745,7 +786,7 @@ HttpResponse ServerState::handle(const HttpRequest & request) {
         return handle_transcription(request);
     }
     if (request.method == "POST" && request.path == "/v1/tasks/run") {
-        return handle_generic_run(request.body);
+        return handle_generic_run(request);
     }
     if (request.method == "POST" && request.path == "/v1/tasks/stream") {
         return handle_generic_stream(request.body);
@@ -1270,12 +1311,36 @@ HttpResponse ServerState::run_transcription_stream(
     });
 }
 
-HttpResponse ServerState::handle_generic_run(const std::string & body_text) {
+HttpResponse ServerState::handle_generic_run(const HttpRequest & request) {
+    std::string content_type;
+    if (const auto it = request.headers.find("content-type"); it != request.headers.end()) {
+        content_type = it->second;
+    }
+    if (const auto boundary = extract_multipart_boundary(content_type)) {
+        return handle_generic_run_multipart(request.body, *boundary);
+    }
+    return handle_generic_run_json(request.body);
+}
+
+HttpResponse ServerState::handle_generic_run_json(const std::string & body_text) {
     const auto body = engine::io::json::parse(body_text);
     auto & model = require_model(body);
     const auto * request_json = body.find("request");
     const auto request = minitts::cli::build_request_from_json(
         request_json != nullptr ? *request_json : body,
+        request_base_);
+    const auto timed_result = model.task.mode == engine::runtime::RunMode::Streaming
+        ? run_streaming_model(model, request)
+        : run_model(model, request);
+    return json_response(task_result_json(timed_result.result, timed_result.wall_ms));
+}
+
+HttpResponse ServerState::handle_generic_run_multipart(const std::string & body_text, const std::string & boundary) {
+    const auto payload = build_generic_run_multipart_payload(body_text, boundary);
+    auto & model = require_model(payload.body);
+    const auto * request_json = payload.body.find("request");
+    const auto request = minitts::cli::build_request_from_json(
+        request_json != nullptr ? *request_json : payload.body,
         request_base_);
     const auto timed_result = model.task.mode == engine::runtime::RunMode::Streaming
         ? run_streaming_model(model, request)

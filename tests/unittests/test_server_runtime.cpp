@@ -240,6 +240,37 @@ void test_webui_root_spa_fallback_and_api_isolation() {
     require(api_response.status == 404, "unknown api path should remain an api 404");
 }
 
+void test_generic_run_accepts_multipart_audio_uploads() {
+    const auto root = make_temp_root();
+    auto state = make_webui_state(root);
+
+    minitts::server::HttpRequest request;
+    request.method = "POST";
+    request.path = "/v1/tasks/run";
+    request.headers["content-type"] = "multipart/form-data; boundary=boundary123";
+    request.body =
+        "--boundary123\r\n"
+        "Content-Disposition: form-data; name=\"model\"\r\n\r\n"
+        "missing-model\r\n"
+        "--boundary123\r\n"
+        "Content-Disposition: form-data; name=\"text\"\r\n\r\n"
+        "hello world\r\n"
+        "--boundary123\r\n"
+        "Content-Disposition: form-data; name=\"audio\"; filename=\"input.wav\"\r\n"
+        "Content-Type: audio/wav\r\n\r\n"
+        "RIFF\r\n"
+        "--boundary123--\r\n";
+
+    try {
+        (void) state.handle(request);
+        throw std::runtime_error("multipart generic run should reject unknown model");
+    } catch (const std::exception & error) {
+        require(
+            std::string(error.what()) == "unknown model id: missing-model",
+            "multipart generic run should parse uploaded audio before model lookup");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -248,6 +279,7 @@ int main() {
         test_voices_endpoint_discovers_kokoro_packaged_voices();
         test_webui_root_serves_index_and_assets();
         test_webui_root_spa_fallback_and_api_isolation();
+        test_generic_run_accepts_multipart_audio_uploads();
     } catch (const std::exception & error) {
         std::cerr << error.what() << '\n';
         return 1;

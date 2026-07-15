@@ -85,6 +85,48 @@ export async function synthesizeSpeech(request) {
   };
 }
 
+function decodeBase64Wav(audioBase64) {
+  const binary = atob(audioBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: "audio/wav" });
+}
+
+export async function runGeneration(request) {
+  const isMultipart = request.transport === "multipart";
+  let response;
+  try {
+    response = await fetch(`${API_BASE}/v1/tasks/run`, {
+      method: "POST",
+      headers: isMultipart ? undefined : {
+        "Content-Type": "application/json",
+      },
+      body: isMultipart ? request.payload : JSON.stringify(request.payload),
+    });
+  } catch (error) {
+    throw normalizeFetchError(error);
+  }
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+  const payload = await response.json();
+  const audioBase64 = payload.audio ?? payload.named_audio_outputs?.[0]?.audio;
+  if (!audioBase64) {
+    throw new Error("Generation response did not contain audio output.");
+  }
+  return {
+    blob: decodeBase64Wav(audioBase64),
+    metrics: {
+      wallMs: payload.timing?.wall_ms,
+      audioDurationMs: payload.timing?.audio_duration_ms,
+      rtf: payload.timing?.rtf,
+    },
+    payload,
+  };
+}
+
 export async function transcribeAudio({ model, file, language }) {
   const form = new FormData();
   form.append("model", model);

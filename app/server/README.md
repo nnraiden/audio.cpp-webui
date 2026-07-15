@@ -267,3 +267,5 @@ curl http://127.0.0.1:8080/v1/tasks/run \
     }
   }'
 ```
+
+This route also accepts `multipart/form-data` with server-temporary WAV uploads for fields such as `audio` and `voice_ref`. That is the intended browser-upload path for Web UI music-generation requests like ACE-Step routes that need source audio.

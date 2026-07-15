@@ -1,8 +1,9 @@
-import { fetchHealth, fetchModels, fetchVoices, synthesizeSpeech, transcribeAudio } from "./api.js";
+import { fetchHealth, fetchModels, fetchVoices, runGeneration, synthesizeSpeech, transcribeAudio } from "./api.js";
 import { elements } from "./dom.js";
-import { isSpeechModel } from "./modelTasks.js";
-import { clearOutputs, logEvent, renderAsrResult, renderHealth, renderHealthError, renderModels, renderTtsFamilyForm, renderTtsResult } from "./ui.js";
-import { getFamilyDraft, getSelectedModel, setFamilyDraft, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog, state } from "./state.js";
+import { isGenerationModel, isSpeechModel } from "./modelTasks.js";
+import { buildGenerationRequest, ensureGenerationDraft, readGenerationDraftFromDom, updateGenerationDraftFile } from "./genFamilies.js";
+import { clearOutputs, logEvent, renderAsrResult, renderGenerationFamilyForm, renderGenerationResult, renderHealth, renderHealthError, renderModels, renderTtsFamilyForm, renderTtsResult } from "./ui.js";
+import { getFamilyDraft, getSelectedModel, setFamilyDraft, setGenerationAudioUrl, setModels, setSelectedModelId, setTtsAudioUrl, setVoiceCatalog, state } from "./state.js";
 import { buildSpeechRequest, ensureFamilyDraft, readFamilyDraftFromDom, updateFamilyDraftFile } from "./ttsFamilies.js";
 
 async function loadHealth() {
@@ -21,6 +22,7 @@ async function loadModels() {
   setModels(models);
   renderModels();
   syncTtsFamilyForm();
+  syncGenerationFamilyForm();
   await syncVoices();
   logEvent(`Loaded ${models.length} model definition(s).`);
 }
@@ -39,12 +41,29 @@ function readCurrentFamilyDraft() {
   );
 }
 
+function readCurrentGenerationDraft() {
+  const model = getSelectedModel();
+  return readGenerationDraftFromDom(
+    model,
+    elements.genFamilyFields,
+    ensureGenerationDraft(model, getFamilyDraft(currentFamilyKey()))
+  );
+}
+
 function syncTtsFamilyForm() {
   const model = getSelectedModel();
   const key = currentFamilyKey();
   const draft = ensureFamilyDraft(model, getFamilyDraft(key));
   setFamilyDraft(key, draft);
   renderTtsFamilyForm(model, draft);
+}
+
+function syncGenerationFamilyForm() {
+  const model = getSelectedModel();
+  const key = currentFamilyKey();
+  const draft = ensureGenerationDraft(model, getFamilyDraft(key));
+  setFamilyDraft(key, draft);
+  renderGenerationFamilyForm(model, draft);
 }
 
 async function syncVoices() {
@@ -108,6 +127,29 @@ async function handleTtsSubmit(event) {
   }
 }
 
+async function handleGenerationSubmit(event) {
+  event.preventDefault();
+  const model = getSelectedModel();
+  if (!model) {
+    logEvent("No model selected for generation.");
+    return;
+  }
+
+  const draft = readCurrentGenerationDraft();
+  setFamilyDraft(currentFamilyKey(), draft);
+
+  logEvent(`Submitting generation request for ${model.id}.`);
+  try {
+    const result = await runGeneration(buildGenerationRequest(model, draft));
+    const audioUrl = URL.createObjectURL(result.blob);
+    setGenerationAudioUrl(audioUrl);
+    renderGenerationResult({ audioUrl, metrics: result.metrics });
+    logEvent(`Generation request for ${model.id} completed.`);
+  } catch (error) {
+    logEvent(`Generation request failed: ${error.message}`);
+  }
+}
+
 async function handleAsrSubmit(event) {
   event.preventDefault();
   const model = getSelectedModel();
@@ -145,11 +187,17 @@ function attachEvents() {
   });
 
   elements.modelSelect.addEventListener("change", async (event) => {
-    setFamilyDraft(currentFamilyKey(), readCurrentFamilyDraft());
+    const model = getSelectedModel();
+    if (isSpeechModel(model)) {
+      setFamilyDraft(currentFamilyKey(), readCurrentFamilyDraft());
+    } else if (isGenerationModel(model)) {
+      setFamilyDraft(currentFamilyKey(), readCurrentGenerationDraft());
+    }
     setSelectedModelId(event.target.value);
     clearOutputs();
     renderModels();
     syncTtsFamilyForm();
+    syncGenerationFamilyForm();
     await syncVoices();
     logEvent(`Switched active model to ${event.target.value}.`);
   });
@@ -176,6 +224,10 @@ function attachEvents() {
 
   elements.ttsFamilyFields.addEventListener("input", () => {
     setFamilyDraft(currentFamilyKey(), readCurrentFamilyDraft());
+  });
+
+  elements.genFamilyFields.addEventListener("input", () => {
+    setFamilyDraft(currentFamilyKey(), readCurrentGenerationDraft());
   });
 
   elements.ttsFamilyFields.addEventListener("change", (event) => {
@@ -243,8 +295,28 @@ function attachEvents() {
     syncTtsFamilyForm();
   });
 
+  elements.genFamilyFields.addEventListener("change", (event) => {
+    if (event.target.dataset.role === "ace-step-audio-file") {
+      const draft = updateGenerationDraftFile(
+        getSelectedModel(),
+        readCurrentGenerationDraft(),
+        "ace-step-audio-file",
+        event.target.files?.[0] ?? null
+      );
+      setFamilyDraft(currentFamilyKey(), draft);
+      syncGenerationFamilyForm();
+      return;
+    }
+    setFamilyDraft(currentFamilyKey(), readCurrentGenerationDraft());
+    syncGenerationFamilyForm();
+  });
+
   elements.ttsForm.addEventListener("submit", (event) => {
     handleTtsSubmit(event).catch((error) => logEvent(`TTS submit failed: ${error.message}`));
+  });
+
+  elements.genForm.addEventListener("submit", (event) => {
+    handleGenerationSubmit(event).catch((error) => logEvent(`Generation submit failed: ${error.message}`));
   });
 
   elements.asrForm.addEventListener("submit", (event) => {

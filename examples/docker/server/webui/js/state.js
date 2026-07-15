@@ -7,6 +7,7 @@ export const state = {
     samples: [],
   },
   ttsAudioUrl: null,
+  generationAudioUrl: null,
   familyDrafts: {},
 };
 
@@ -38,6 +39,13 @@ export function setTtsAudioUrl(nextUrl) {
     URL.revokeObjectURL(state.ttsAudioUrl);
   }
   state.ttsAudioUrl = nextUrl;
+}
+
+export function setGenerationAudioUrl(nextUrl) {
+  if (state.generationAudioUrl) {
+    URL.revokeObjectURL(state.generationAudioUrl);
+  }
+  state.generationAudioUrl = nextUrl;
 }
 
 export function getFamilyDraft(key) {

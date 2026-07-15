@@ -10,7 +10,9 @@ This folder contains the Web UI smoke test plus focused JS coverage for family-s
 - the server serves `GET /`
 - startup fails cleanly when the target port is already in use
 
-`ttsFamilies.test.js` verifies family-specific rendering and request serialization paths, including OmniVoice clone and voice-design behavior.
+`ttsFamilies.test.js` verifies TTS-family rendering and request serialization paths, including OmniVoice clone and voice-design behavior.
+
+`genFamilies.test.js` verifies the music-generation family path for `task: "gen"` models, starting with ACE-Step route rendering, validation, and request serialization.
 
 Together these checks cover startup plus the modular TTS-family request builder without inflating server smoke coverage.
 
@@ -27,6 +29,7 @@ This runs:
 ```bash
 node test/smoke.cjs
 node --experimental-default-type=module test/ttsFamilies.test.js
+node --experimental-default-type=module test/genFamilies.test.js
 ```
 
 ## Requirements

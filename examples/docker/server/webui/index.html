@@ -100,6 +100,32 @@
         </div>
       </section>
 
+      <section id="gen-panel" class="panel hidden">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">GEN</p>
+            <h2>Music Generation</h2>
+          </div>
+        </div>
+
+        <form id="gen-form" class="stacked-form">
+          <div id="gen-family-fields"></div>
+
+          <div class="actions">
+            <button id="gen-submit" class="primary-button" type="submit">Generate Audio</button>
+          </div>
+        </form>
+
+        <div id="gen-result" class="result-card hidden">
+          <div class="result-header">
+            <h3>Audio Result</h3>
+            <a id="gen-download" class="link-button" href="#" download="generation.wav">Download WAV</a>
+          </div>
+          <audio id="gen-audio" controls></audio>
+          <dl id="gen-metrics" class="metrics"></dl>
+        </div>
+      </section>
+
       <section id="asr-panel" class="panel hidden">
         <div class="panel-heading">
           <div>
