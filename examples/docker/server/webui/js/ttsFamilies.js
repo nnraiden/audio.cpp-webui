@@ -393,6 +393,276 @@ function serializeOmniVoiceRequest(model, draft, shared, voiceCatalog) {
   };
 }
 
+const MOSS_CHUNK_MODES = ["default", "tag_aware", "japanese", "endline"];
+
+function createMossSpec({ maxTokens, textChunkSize, textTemperature, textTopP, textTopK }) {
+  return {
+    promptLabel: "Input Text",
+    promptRows: 7,
+    placeholder: "",
+    defaultValue: DEFAULT_TEXT,
+    helper: "",
+    textMode: "plain_text",
+    cloneMode: "single_wav_optional",
+    catalogSources: ["samples"],
+    localUpload: true,
+    createDraft() {
+      return {
+        prompt: DEFAULT_TEXT,
+        mode: "text_only",
+        source: "sample",
+        samplePath: "",
+        uploadFile: null,
+        referenceText: "",
+        showAdvanced: false,
+        maxTokens: String(maxTokens),
+        doSample: true,
+        temperature: "1.7",
+        topP: "0.8",
+        topK: "25",
+        repetitionPenalty: "1.0",
+        textTemperature: textTemperature,
+        textTopP: textTopP,
+        textTopK: textTopK,
+        textChunkMode: "default",
+      };
+    },
+    ensureDraft(existingDraft) {
+      const draft = existingDraft ?? this.createDraft();
+      draft.prompt = typeof draft.prompt === "string" ? draft.prompt : DEFAULT_TEXT;
+      draft.mode = draft.mode === "clone" ? "clone" : "text_only";
+      draft.source = draft.source === "upload" ? draft.source : "sample";
+      draft.samplePath = typeof draft.samplePath === "string" ? draft.samplePath : "";
+      draft.uploadFile = draft.uploadFile instanceof File ? draft.uploadFile : null;
+      draft.referenceText = typeof draft.referenceText === "string" ? draft.referenceText : "";
+      draft.showAdvanced = draft.showAdvanced === true;
+      draft.maxTokens = normalizeNumericDraftValue(draft.maxTokens);
+      draft.temperature = normalizeNumericDraftValue(draft.temperature);
+      draft.topP = normalizeNumericDraftValue(draft.topP);
+      draft.topK = normalizeNumericDraftValue(draft.topK);
+      draft.repetitionPenalty = normalizeNumericDraftValue(draft.repetitionPenalty);
+      draft.textTemperature = normalizeNumericDraftValue(draft.textTemperature);
+      draft.textTopP = normalizeNumericDraftValue(draft.textTopP);
+      draft.textTopK = normalizeNumericDraftValue(draft.textTopK);
+      draft.textChunkMode = typeof draft.textChunkMode === "string" ? draft.textChunkMode : "default";
+      return draft;
+    },
+    renderFields(draft, voiceCatalog) {
+      const sampleOptions = makeSampleOptions(voiceCatalog);
+      const uploadName = draft.uploadFile?.name ?? "No file selected";
+      const chunkModeOptions = MOSS_CHUNK_MODES.map((m) => `<option value="${m}">${m}</option>`).join("");
+      return `
+        ${renderPromptField(this, draft)}
+        <div class="segmented-control" role="radiogroup" aria-label="MOSS mode">
+          <label class="segment-option">
+            <input type="radio" name="moss-mode" value="text_only" data-role="moss-mode" ${draft.mode === "text_only" ? "checked" : ""}>
+            <span>Text Only</span>
+          </label>
+          <label class="segment-option">
+            <input type="radio" name="moss-mode" value="clone" data-role="moss-mode" ${draft.mode === "clone" ? "checked" : ""}>
+            <span>Voice Clone</span>
+          </label>
+        </div>
+        <div class="field-stack ${draft.mode === "clone" ? "" : "hidden"}" data-visibility="moss-clone-panel">
+          <div class="segmented-control" role="radiogroup" aria-label="MOSS voice reference">
+            <label class="segment-option">
+              <input type="radio" name="moss-source" value="sample" data-role="moss-source" ${draft.source === "sample" ? "checked" : ""}>
+              <span>Shared WAV Sample</span>
+            </label>
+            <label class="segment-option">
+              <input type="radio" name="moss-source" value="upload" data-role="moss-source" ${draft.source === "upload" ? "checked" : ""}>
+              <span>Upload WAV</span>
+            </label>
+          </div>
+          <div class="field-stack ${draft.source === "sample" ? "" : "hidden"}" data-visibility="moss-source-sample">
+            ${renderVoiceSelect("Reference WAV", sampleOptions, draft.samplePath, "Select shared sample")}
+          </div>
+          <div class="field-stack ${draft.source === "upload" ? "" : "hidden"}" data-visibility="moss-source-upload">
+            <label class="field">
+              <span>Local WAV</span>
+              <input data-role="moss-upload-file" type="file" accept=".wav,audio/wav">
+              <small>${escapeHtml(uploadName)}</small>
+            </label>
+          </div>
+          <label class="field ${draft.source === "sample" ? "" : ""}" data-visibility="moss-reference-text">
+            <span>Reference Transcript</span>
+            <textarea data-role="moss-reference-text" rows="4" placeholder="Transcript for the reference audio (optional but recommended)." ${draft.source === "sample" ? "readonly" : ""}>${escapeHtml(draft.source === "sample" ? (findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text ?? "") : draft.referenceText)}</textarea>
+            <small class="family-helper">${draft.source === "sample" ? "Reference transcript comes from a same-stem .txt file when available." : "Transcript is optional when uploading a reference WAV."}</small>
+          </label>
+        </div>
+        <div class="field-grid">
+          <label class="field">
+            <span>Text Chunk Mode</span>
+            <select data-role="moss-text-chunk-mode">${chunkModeOptions}</select>
+          </label>
+        </div>
+        <div class="field-stack">
+          <label class="toggle-row">
+            <input data-role="moss-show-advanced" type="checkbox" ${draft.showAdvanced ? "checked" : ""}>
+            <span>Advanced MOSS controls</span>
+          </label>
+          <div class="field-grid ${draft.showAdvanced ? "" : "hidden"}" data-visibility="moss-advanced">
+            <label class="field">
+              <span>Max Tokens</span>
+              <input data-role="moss-advanced-input" data-key="max_tokens" type="number" value="${escapeHtml(draft.maxTokens)}" placeholder="Optional">
+            </label>
+            <label class="toggle-row">
+              <input data-role="moss-do-sample" type="checkbox" ${draft.doSample ? "checked" : ""}>
+              <span>Do Sample</span>
+            </label>
+            <label class="field">
+              <span>Temperature</span>
+              <input data-role="moss-advanced-input" data-key="temperature" type="number" step="0.1" value="${escapeHtml(draft.temperature)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Top P</span>
+              <input data-role="moss-advanced-input" data-key="top_p" type="number" step="0.1" value="${escapeHtml(draft.topP)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Top K</span>
+              <input data-role="moss-advanced-input" data-key="top_k" type="number" value="${escapeHtml(draft.topK)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Repetition Penalty</span>
+              <input data-role="moss-advanced-input" data-key="repetition_penalty" type="number" step="0.1" value="${escapeHtml(draft.repetitionPenalty)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Text Temperature</span>
+              <input data-role="moss-advanced-input" data-key="text_temperature" type="number" step="0.1" value="${escapeHtml(draft.textTemperature)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Text Top P</span>
+              <input data-role="moss-advanced-input" data-key="text_top_p" type="number" step="0.1" value="${escapeHtml(draft.textTopP)}" placeholder="Optional">
+            </label>
+            <label class="field">
+              <span>Text Top K</span>
+              <input data-role="moss-advanced-input" data-key="text_top_k" type="number" value="${escapeHtml(draft.textTopK)}" placeholder="Optional">
+            </label>
+          </div>
+        </div>
+      `;
+    },
+    readDraftFromDom(root, existingDraft) {
+      const draft = this.ensureDraft(existingDraft);
+      draft.prompt = root.querySelector('[data-role="prompt-input"]')?.value ?? draft.prompt;
+      draft.mode = root.querySelector('[data-role="moss-mode"]:checked')?.value ?? draft.mode;
+      draft.source = root.querySelector('[data-role="moss-source"]:checked')?.value ?? draft.source;
+      draft.samplePath = root.querySelector('[data-role="voice-select"]')?.value ?? draft.samplePath;
+      draft.referenceText = root.querySelector('[data-role="moss-reference-text"]')?.value ?? draft.referenceText;
+      draft.showAdvanced = root.querySelector('[data-role="moss-show-advanced"]')?.checked ?? draft.showAdvanced;
+      draft.doSample = root.querySelector('[data-role="moss-do-sample"]')?.checked ?? draft.doSample;
+      draft.textChunkMode = root.querySelector('[data-role="moss-text-chunk-mode"]')?.value ?? draft.textChunkMode;
+      for (const input of root.querySelectorAll('[data-role="moss-advanced-input"]')) {
+        const key = input.dataset.key;
+        const value = input.value ?? "";
+        if (key === "max_tokens") {
+          draft.maxTokens = value;
+        }
+        if (key === "temperature") {
+          draft.temperature = value;
+        }
+        if (key === "top_p") {
+          draft.topP = value;
+        }
+        if (key === "top_k") {
+          draft.topK = value;
+        }
+        if (key === "repetition_penalty") {
+          draft.repetitionPenalty = value;
+        }
+        if (key === "text_temperature") {
+          draft.textTemperature = value;
+        }
+        if (key === "text_top_p") {
+          draft.textTopP = value;
+        }
+        if (key === "text_top_k") {
+          draft.textTopK = value;
+        }
+      }
+      return draft;
+    },
+    serializeRequest(model, draft, shared, voiceCatalog) {
+      const options = {};
+      if (draft.textChunkMode !== "default") {
+        options.text_chunk_mode = draft.textChunkMode;
+      }
+      if (draft.textTemperature !== "") {
+        options.text_temperature = Number(draft.textTemperature);
+      }
+      if (draft.textTopP !== "") {
+        options.text_top_p = Number(draft.textTopP);
+      }
+      if (draft.textTopK !== "") {
+        options.text_top_k = Number(draft.textTopK);
+      }
+
+      const payloadBase = {
+        model: model.id,
+        input: draft.prompt.trim(),
+        ...(draft.maxTokens !== "" ? { max_tokens: Number(draft.maxTokens) } : {}),
+        ...shared,
+        ...(Object.keys(options).length > 0 ? { options } : {}),
+      };
+
+      if (draft.mode === "clone") {
+        if (draft.source === "sample") {
+          return {
+            transport: "json",
+            payload: {
+              ...payloadBase,
+              voice_ref: draft.samplePath,
+              ...(draft.referenceText.trim() ? { reference_text: draft.referenceText.trim() } : {}),
+            },
+          };
+        }
+
+        const formData = new FormData();
+        formData.append("model", model.id);
+        formData.append("input", draft.prompt.trim());
+        appendFields(formData, shared);
+        if (draft.maxTokens !== "") {
+          formData.append("max_tokens", String(draft.maxTokens));
+        }
+        if (draft.uploadFile) {
+          formData.append("voice_ref", draft.uploadFile);
+        }
+        if (draft.referenceText.trim()) {
+          formData.append("reference_text", draft.referenceText.trim());
+        }
+        for (const [key, value] of Object.entries(options)) {
+          formData.append(key, String(value));
+        }
+        return {
+          transport: "multipart",
+          payload: formData,
+        };
+      }
+
+      return {
+        transport: "json",
+        payload: payloadBase,
+      };
+    },
+    validateDraft(draft, voiceCatalog) {
+      if (!draft.prompt.trim()) {
+        throw new Error("Enter text before submitting.");
+      }
+      if (draft.mode === "clone") {
+        if (draft.source === "sample" && !draft.samplePath) {
+          throw new Error("Choose a shared WAV sample for MOSS voice cloning.");
+        }
+        if (draft.source === "sample" && !findSampleByPath(voiceCatalog, draft.samplePath)?.transcript_text?.trim()) {
+          throw new Error("The selected MOSS shared sample does not have reference text. Add a same-stem .txt file or use upload mode.");
+        }
+        if (draft.source === "upload" && !draft.uploadFile) {
+          throw new Error("Upload a WAV file for MOSS voice cloning.");
+        }
+      }
+    },
+  };
+}
+
 const FAMILY_SPECS = {
   vibevoice: {
     promptLabel: "Script",
@@ -772,6 +1042,20 @@ const FAMILY_SPECS = {
       }
     },
   },
+  moss_tts_local: createMossSpec({
+    maxTokens: 4096,
+    textChunkSize: 2048,
+    textTemperature: "1.0",
+    textTopP: "1.0",
+    textTopK: "50",
+  }),
+  moss_tts_nano: createMossSpec({
+    maxTokens: 300,
+    textChunkSize: 256,
+    textTemperature: "1.5",
+    textTopP: "1.0",
+    textTopK: "50",
+  }),
   omnivoice: {
     promptLabel: "Input Text",
     promptRows: 7,
@@ -1017,6 +1301,14 @@ export function updateFamilyDraftFile(model, draft, role, index, file) {
     return nextDraft;
   }
   if (spec === FAMILY_SPECS.chatterbox && role === "chatterbox-upload-file") {
+    nextDraft.uploadFile = file ?? null;
+    return nextDraft;
+  }
+  if (spec === FAMILY_SPECS.moss_tts_local && role === "moss-upload-file") {
+    nextDraft.uploadFile = file ?? null;
+    return nextDraft;
+  }
+  if (spec === FAMILY_SPECS.moss_tts_nano && role === "moss-upload-file") {
     nextDraft.uploadFile = file ?? null;
     return nextDraft;
   }

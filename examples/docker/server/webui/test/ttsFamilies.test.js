@@ -46,6 +46,32 @@ const CHATTERBOX_CATALOG = {
   ],
 };
 
+const MOSS_LOCAL_MODEL = {
+  id: "moss_tts_local",
+  family: "moss_tts_local",
+  task: "tts",
+  mode: "offline",
+};
+
+const MOSS_NANO_MODEL = {
+  id: "moss_tts_nano",
+  family: "moss_tts_nano",
+  task: "tts",
+  mode: "offline",
+};
+
+const MOSS_CATALOG = {
+  voices: [],
+  presets: [],
+  samples: [
+    {
+      id: "shared/moss_voice",
+      path: "/srv/shared/moss_voice.wav",
+      transcript_text: "MOSS voice transcript",
+    },
+  ],
+};
+
 function formEntries(formData) {
   return Array.from(formData.entries()).map(([key, value]) => [key, value instanceof File ? value.name : value]);
 }
@@ -403,6 +429,161 @@ function testChatterboxValidation() {
   );
 }
 
+function testMossTextOnlyRendering() {
+  const draft = ensureFamilyDraft(MOSS_LOCAL_MODEL, null);
+  assert.equal(draft.mode, "text_only");
+  assert.equal(draft.maxTokens, "4096");
+  assert.equal(draft.textTemperature, "1.0");
+
+  const html = renderFamilyFields(MOSS_LOCAL_MODEL, draft, MOSS_CATALOG);
+  assert.match(html, /Text Only/);
+  assert.match(html, /Voice Clone/);
+  assert.match(html, /Text Chunk Mode/);
+  assert.match(html, /Advanced MOSS controls/);
+  assert.match(html, /Max Tokens/);
+  assert.match(html, /Text Temperature/);
+  assert.match(html, /Text Top P/);
+  assert.match(html, /Text Top K/);
+}
+
+function testMossCloneRendering() {
+  const draft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+    mode: "clone",
+    source: "sample",
+    samplePath: "/srv/shared/moss_voice.wav",
+  });
+  const html = renderFamilyFields(MOSS_LOCAL_MODEL, draft, MOSS_CATALOG);
+  assert.match(html, />Reference transcript comes from a same-stem .txt file/);
+  assert.match(html, /readonly/);
+
+  const uploadDraft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+    mode: "clone",
+    source: "upload",
+    referenceText: "Upload transcript",
+  });
+  const uploadHtml = renderFamilyFields(MOSS_LOCAL_MODEL, uploadDraft, MOSS_CATALOG);
+  assert.match(uploadHtml, />Transcript is optional when uploading/);
+  assert.doesNotMatch(uploadHtml, /data-role="moss-reference-text"[^>]*readonly/);
+}
+
+function testMossTextOnlySerialization() {
+  const draft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+    prompt: "Hello from MOSS.",
+    mode: "text_only",
+    maxTokens: "2048",
+    showAdvanced: true,
+    textTemperature: "1.2",
+    textTopP: "0.9",
+    textTopK: "40",
+    textChunkMode: "tag_aware",
+  });
+  const request = buildSpeechRequest(MOSS_LOCAL_MODEL, draft, { seed: 42 }, MOSS_CATALOG);
+  assert.equal(request.transport, "json");
+  assert.equal(request.payload.model, "moss_tts_local");
+  assert.equal(request.payload.input, "Hello from MOSS.");
+  assert.equal(request.payload.seed, 42);
+  assert.equal(request.payload.max_tokens, 2048);
+  assert.deepEqual(request.payload.options, {
+    text_chunk_mode: "tag_aware",
+    text_temperature: 1.2,
+    text_top_p: 0.9,
+    text_top_k: 40,
+  });
+}
+
+function testMossCloneSerialization() {
+  const draft = ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+    prompt: "Clone prompt.",
+    mode: "clone",
+    source: "sample",
+    samplePath: "/srv/shared/moss_voice.wav",
+    referenceText: "Reference transcript",
+    showAdvanced: true,
+    textTemperature: "1.5",
+  });
+  const request = buildSpeechRequest(MOSS_LOCAL_MODEL, draft, { seed: 99 }, MOSS_CATALOG);
+  assert.equal(request.transport, "json");
+  assert.equal(request.payload.voice_ref, "/srv/shared/moss_voice.wav");
+  assert.equal(request.payload.reference_text, "Reference transcript");
+  assert.deepEqual(request.payload.options, {
+    text_temperature: 1.5,
+  });
+
+  const uploadFile = new File(["RIFF"], "moss_voice.wav", { type: "audio/wav" });
+  const uploadDraft = updateFamilyDraftFile(
+    MOSS_LOCAL_MODEL,
+    ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+      prompt: "Upload clone.",
+      mode: "clone",
+      source: "upload",
+      referenceText: "Upload transcript",
+      showAdvanced: true,
+      textTemperature: "1.0",
+    }),
+    "moss-upload-file",
+    null,
+    uploadFile
+  );
+  const uploadRequest = buildSpeechRequest(MOSS_LOCAL_MODEL, uploadDraft, { seed: 7 }, MOSS_CATALOG);
+  assert.equal(uploadRequest.transport, "multipart");
+  assert.deepEqual(formEntries(uploadRequest.payload), [
+    ["model", "moss_tts_local"],
+    ["input", "Upload clone."],
+    ["seed", "7"],
+    ["voice_ref", "moss_voice.wav"],
+    ["reference_text", "Upload transcript"],
+    ["text_temperature", "1"],
+  ]);
+}
+
+function testMossNanoDefaults() {
+  const draft = ensureFamilyDraft(MOSS_NANO_MODEL, null);
+  assert.equal(draft.maxTokens, "300");
+  assert.equal(draft.textTemperature, "1.5");
+}
+
+function testMossValidation() {
+  assert.throws(
+    () => buildSpeechRequest(
+      MOSS_LOCAL_MODEL,
+      ensureFamilyDraft(MOSS_LOCAL_MODEL, { prompt: "" }),
+      {},
+      MOSS_CATALOG
+    ),
+    /Enter text before submitting/
+  );
+
+  assert.throws(
+    () => buildSpeechRequest(
+      MOSS_LOCAL_MODEL,
+      ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+        prompt: "Hello.",
+        mode: "clone",
+        source: "sample",
+        samplePath: "",
+      }),
+      {},
+      MOSS_CATALOG
+    ),
+    /Choose a shared WAV sample for MOSS/
+  );
+
+  assert.throws(
+    () => buildSpeechRequest(
+      MOSS_LOCAL_MODEL,
+      ensureFamilyDraft(MOSS_LOCAL_MODEL, {
+        prompt: "Hello.",
+        mode: "clone",
+        source: "upload",
+        uploadFile: null,
+      }),
+      {},
+      MOSS_CATALOG
+    ),
+    /Upload a WAV file for MOSS/
+  );
+}
+
 function main() {
   testOmniVoiceCloneRendering();
   testOmniVoicePanelHint();
@@ -412,6 +593,12 @@ function main() {
   testChatterboxRendering();
   testChatterboxSerialization();
   testChatterboxValidation();
+  testMossTextOnlyRendering();
+  testMossCloneRendering();
+  testMossTextOnlySerialization();
+  testMossCloneSerialization();
+  testMossNanoDefaults();
+  testMossValidation();
   console.log("ttsFamilies test passed");
 }
 
