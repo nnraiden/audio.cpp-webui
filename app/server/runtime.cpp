@@ -338,6 +338,37 @@ bool is_wav_upload_filename(const std::string & filename) {
     return ext.empty() || ext == ".wav";
 }
 
+// Fork-only multipart speech/generic endpoints still pass uploaded WAVs through the
+// existing path-based request builders, so those uploads must be spooled to temp files.
+std::filesystem::path write_temp_upload(const std::string & filename, const std::string & data) {
+    std::filesystem::path ext = std::filesystem::path(filename).extension();
+    if (ext.empty()) {
+        ext = ".wav";
+    }
+    static std::atomic<uint64_t> counter{0};
+    std::ostringstream name;
+    name << "audiocpp_upload_" << Clock::now().time_since_epoch().count() << "_" << counter.fetch_add(1)
+         << ext.string();
+    const auto path = std::filesystem::temp_directory_path() / name.str();
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("failed to create temp file for upload: " + path.string());
+    }
+    out.write(data.data(), static_cast<std::streamsize>(data.size()));
+    if (!out) {
+        throw std::runtime_error("failed to write temp file for upload: " + path.string());
+    }
+    return path;
+}
+
+struct TempFileGuard {
+    std::filesystem::path path;
+    ~TempFileGuard() {
+        std::error_code ec;
+        std::filesystem::remove(path, ec);
+    }
+};
+
 double elapsed_ms(Clock::time_point started) {
     return std::chrono::duration<double, std::milli>(Clock::now() - started).count();
 }
