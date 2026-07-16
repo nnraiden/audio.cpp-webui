@@ -56,6 +56,7 @@ runtime::ModelCliInterface cli(const Qwen3TTSAssets &) {
     runtime::ModelCliInterface out;
     out.session_options = {
         {"qwen3_tts.mem_saver", "true|false", "Release the talker cached-step graph after each request; default false."},
+        {"qwen3_tts.voice_prompt_cache_slots", "n", "Voice prompt cache slots; default 1."},
     };
     return out;
 }

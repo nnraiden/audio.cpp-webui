@@ -284,7 +284,7 @@ Status labels:
 | `sortformer_diar` | No | --- | --- | --- | --- |
 | `stable_audio` | Done | Pass | --- | Pass (drift) | Pass (drift) |
 | `supertonic` | Done | Pass | Pass | --- | No (unsupported weight dtype) |
-| `vevo2` | No | --- | --- | --- | --- |
+| `vevo2` | Done | Pass | Pass | Pass (drift) | No (similarity drift, frame drift) |
 | `vibevoice` | No | --- | --- | --- | --- |
 | `vibevoice_asr` | Done | Pass | --- | Pass | Pass |
 | `voxcpm2` | Done | Pass | Pass | No (clone similarity drift, frame drift) | No (similarity drift, frame drift) |

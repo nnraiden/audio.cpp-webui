@@ -50,24 +50,6 @@ struct GgmlContextDeleter {
     }
 };
 
-engine::core::TensorValue ensure_contiguous(
-    engine::core::ModuleBuildContext & ctx,
-    const engine::core::TensorValue & value) {
-    return engine::core::ensure_backend_addressable_layout(ctx, value);
-}
-
-engine::core::TensorValue transpose_bct_to_btc(
-    engine::core::ModuleBuildContext & ctx,
-    const engine::core::TensorValue & input) {
-    return engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, input);
-}
-
-engine::core::TensorValue transpose_btc_to_bct(
-    engine::core::ModuleBuildContext & ctx,
-    const engine::core::TensorValue & input) {
-    return engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, input);
-}
-
 engine::core::TensorValue scale_last_dim(
     engine::core::ModuleBuildContext & ctx,
     const engine::core::TensorValue & input,
@@ -76,14 +58,8 @@ engine::core::TensorValue scale_last_dim(
         ctx,
         scale,
         engine::core::TensorShape::from_dims({1, 1, scale.shape.dims[0]}));
-    const auto repeated = engine::core::wrap_tensor(
-        ggml_repeat(ctx.ggml, view.tensor, input.tensor),
-        input.shape,
-        GGML_TYPE_F32);
-    return engine::core::wrap_tensor(
-        ggml_mul(ctx.ggml, input.tensor, repeated.tensor),
-        input.shape,
-        GGML_TYPE_F32);
+    const auto repeated = engine::modules::RepeatModule({input.shape}).build(ctx, view);
+    return engine::modules::MulModule{}.build(ctx, input, repeated);
 }
 
 std::shared_ptr<const Vevo2VocoderWeights> load_vocoder_weights(
@@ -169,7 +145,7 @@ engine::core::TensorValue build_vocoder_convnext_block(
         1,
         weights.dwconv.bias.has_value(),
     }).build(ctx, input_bct, weights.dwconv);
-    hidden = transpose_bct_to_btc(ctx, hidden);
+    hidden = engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, hidden);
     hidden = engine::modules::LayerNormModule({config.dim, 1.0e-6F, true, true})
                  .build(ctx, hidden, weights.norm);
     hidden = engine::modules::LinearModule({
@@ -186,7 +162,7 @@ engine::core::TensorValue build_vocoder_convnext_block(
         GGML_PREC_F32,
     }).build(ctx, hidden, weights.pwconv2);
     hidden = scale_last_dim(ctx, hidden, weights.gamma);
-    hidden = transpose_btc_to_bct(ctx, hidden);
+    hidden = engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, hidden);
     return engine::modules::AddModule{}.build(ctx, input_bct, hidden);
 }
 
@@ -204,13 +180,13 @@ engine::core::TensorValue build_vocoder_head(
         1,
         weights.embed.bias.has_value(),
     }).build(ctx, mel_bct, weights.embed);
-    hidden = transpose_bct_to_btc(ctx, hidden);
+    hidden = engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, hidden);
     hidden = engine::modules::LayerNormModule({config.dim, 1.0e-6F, true, true}).build(ctx, hidden, weights.norm);
-    hidden = transpose_btc_to_bct(ctx, hidden);
+    hidden = engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, hidden);
     for (const auto & block : weights.convnext) {
         hidden = build_vocoder_convnext_block(ctx, hidden, block, config);
     }
-    hidden = transpose_bct_to_btc(ctx, hidden);
+    hidden = engine::modules::TransposeModule({{0, 2, 1, 3}, 3}).build(ctx, hidden);
     hidden = engine::modules::LayerNormModule({config.dim, 1.0e-6F, true, true}).build(ctx, hidden, weights.final_norm);
     return engine::modules::LinearModule({
         config.dim,
@@ -332,7 +308,7 @@ struct Vevo2VocoderGraph {
             engine::core::TensorShape::from_dims({1, config.input_channels, frames}),
             GGML_TYPE_F32);
         auto head = build_vocoder_head(build_ctx, mel, *this->weights, config);
-        head = ensure_contiguous(build_ctx, head);
+        head = engine::core::ensure_backend_addressable_layout(build_ctx, head);
         output = head.tensor;
         ggml_set_output(output);
 
