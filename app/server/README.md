@@ -22,7 +22,6 @@ cat > server.json <<'JSON'
   "device": 0,
   "threads": 1,
   "lazy_load": true,
-  "webui_root": "examples/docker/server/webui",
   "models": [
     {
       "id": "pocket-tts",
@@ -71,8 +70,6 @@ the per-model value takes precedence. The equivalent command-line option is
 Set top-level `"backend"` to `"cuda"`, `"cpu"`, `"vulkan"`, or `"metal"`. CUDA is the optimized path for audio.cpp; CPU, Vulkan, and Metal are intended for portability and testing when the binary is built with that backend, but performance and model coverage may be lower. The server prints this expectation-setting message when a non-CUDA backend is selected.
 
 Set top-level `"lazy_load": true` to register all configured model ids at startup but defer each model's framework load and session creation until its first request. A model can override the default with `"lazy": true` or `"lazy": false`.
-
-Set top-level `webui_root` to serve the example Web UI from the same origin as the API. With that set, `GET /` serves `index.html`, static assets are served from that directory, and unknown non-`/v1` GET paths fall back to `index.html` for client-side routing.
 
 > [!WARNING]
 > Lazy loading does not unload models after a request. Once a model is first used, the server keeps that model and session in memory for reuse until the server exits.
@@ -224,7 +221,7 @@ curl http://127.0.0.1:8080/v1/audio/transcriptions \
   -F file=@/path/to/input.wav
 ```
 
-`file` and `model` are required; `language` is optional. The uploaded bytes are spooled to a temporary file for the duration of the request and removed afterward.
+`file` and `model` are required; `language` is optional. Uploaded WAV bytes are decoded in memory and are not written to a temporary file.
 
 For streaming-capable ASR models configured with `mode: "streaming"`, pass `stream=true` to receive OpenAI-style transcription SSE:
 
@@ -240,14 +237,14 @@ The stream emits `transcript.text.delta` events, one final `transcript.text.done
 
 ### `GET /v1/audio/voices?model=<id>`
 
-Lists the cached voice ids, configured server voice preset names, and shared WAV samples available for a TTS model, so a client can populate a voice picker instead of guessing generic names. Shared samples come from `voice_samples_base`, scan recursively for `.wav`, and expose nullable sibling transcript text from same-directory `same-stem.txt` files. For families with discoverable built-in voice ids, this also scans the model directory for known voice stores such as `model_root/embeddings/*.safetensors` (`pocket_tts`) and `model_root/voices/*.safetensors` (`kokoro_tts`). Families without a built-in voice directory still return configured presets and shared samples only.
+Lists the cached voice ids and configured server voice preset names available for a TTS model, so a client can populate a voice picker instead of guessing generic names. For families that keep voice presets under `model_root/embeddings/*.safetensors` (`pocket_tts` today), this returns those ids too. If `model` is omitted and the server has exactly one configured model, that model is used; if multiple models are configured, omit `model` only when an empty list is acceptable.
 
 ```bash
 curl 'http://127.0.0.1:8080/v1/audio/voices?model=pocket-tts'
 ```
 
 ```json
-{"voices":["alba","cosette","marius"],"presets":[{"id":"assistant","voice_id":null,"voice_ref":"/srv/presets/assistant.wav","reference_text":"Reference transcript","is_default":true}],"samples":[{"id":"shared/demo","path":"/srv/shared/demo.wav","transcript_text":"Reference transcript"}]}
+{"voices": ["alba", "cosette", "marius"]}
 ```
 
 ### `POST /v1/tasks/run`
@@ -267,5 +264,3 @@ curl http://127.0.0.1:8080/v1/tasks/run \
     }
   }'
 ```
-
-This route also accepts `multipart/form-data` with server-temporary WAV uploads for fields such as `audio` and `voice_ref`. That is the intended browser-upload path for Web UI music-generation requests like ACE-Step routes that need source audio.
