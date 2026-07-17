@@ -83,6 +83,9 @@ option(ENGINE_ENABLE_OPENMP "Build host code with OpenMP support" ON)
 option(ENGINE_BUILD_EXAMPLES "Build example binaries" OFF)
 option(ENGINE_BUILD_TESTS "Build framework unit tests" OFF)
 option(ENGINE_BUILD_WARMBENCH "Build warmbench helper binaries" OFF)
+set(AUDIOCPP_GGML_SOURCE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/external/ggml"
+    CACHE PATH "ggml source tree to build with AudioCPP")
 
 if (ENGINE_ENABLE_CUDA)
     enable_language(CUDA)
@@ -111,7 +114,11 @@ set(SPM_ENABLE_SHARED OFF CACHE BOOL "Build sentencepiece shared libs" FORCE)
 set(SPM_BUILD_TEST OFF CACHE BOOL "Do not build sentencepiece tests" FORCE)
 set(SPM_ENABLE_TCMALLOC OFF CACHE BOOL "Do not probe for tcmalloc" FORCE)
 
-add_subdirectory(external/ggml)
+if (NOT EXISTS "${AUDIOCPP_GGML_SOURCE_DIR}/CMakeLists.txt")
+    message(FATAL_ERROR "AUDIOCPP_GGML_SOURCE_DIR does not point to a ggml source tree: ${AUDIOCPP_GGML_SOURCE_DIR}")
+endif()
+message(STATUS "Using ggml source: ${AUDIOCPP_GGML_SOURCE_DIR}")
+add_subdirectory("${AUDIOCPP_GGML_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/ggml")
 add_subdirectory(external/sentencepiece EXCLUDE_FROM_ALL)
 
 add_compile_options(
