@@ -56,6 +56,7 @@ runtime::ModelCliInterface cli(const Qwen3TTSAssets &) {
     runtime::ModelCliInterface out;
     out.session_options = {
         {"qwen3_tts.mem_saver", "true|false", "Release the talker cached-step graph after each request; default false."},
+        {"qwen3_tts.voice_prompt_cache_slots", "n", "Voice prompt cache slots; default 1."},
     };
     return out;
 }
@@ -64,6 +65,17 @@ class Qwen3TTSLoader final : public runtime::IVoiceModelLoader {
 public:
     std::string family() const override {
         return "qwen3_tts";
+    }
+
+    runtime::CapabilitySet advertised_capabilities() const override {
+        runtime::CapabilitySet out;
+        out.supported_tasks = {
+            {runtime::VoiceTaskKind::Tts, {runtime::RunMode::Offline}},
+            {runtime::VoiceTaskKind::VoiceDesign, {runtime::RunMode::Offline}},
+        };
+        out.supports_speaker_reference = true;
+        out.supports_style_condition = true;
+        return out;
     }
 
     bool can_load(const runtime::ModelLoadRequest & request) const override {

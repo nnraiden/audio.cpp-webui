@@ -216,9 +216,10 @@ std::shared_ptr<const Vevo2Assets> load_vevo2_assets(
     assets.resources = assets::load_resource_bundle_from_package_spec(
         model_path,
         assets::default_model_package_spec_path("vevo2"));
-    const auto whisper_root = whisper_model_path.value_or(assets.resources.model_root().parent_path() / "whisper-medium");
-    assets.resources.add_file("whisper_config", whisper_root / "config.json");
-    assets.resources.add_tensor_source("whisper_weights", whisper_root / "model.safetensors");
+    if (whisper_model_path.has_value()) {
+        assets.resources.add_file("whisper_config", *whisper_model_path / "config.json");
+        assets.resources.add_tensor_source("whisper_weights", *whisper_model_path / "model.safetensors");
+    }
     assets.config = parse_config(assets.resources);
     assets.content_style_tokenizer_weights = assets.resources.open_tensor_source("content_style_tokenizer_weights");
     assets.prosody_tokenizer_weights = assets.resources.open_tensor_source("prosody_tokenizer_weights");

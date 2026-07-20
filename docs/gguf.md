@@ -279,12 +279,13 @@ Status labels:
 | `qwen3_tts` base | Done | Pass | Pass | No (similarity drift, frame drift, text minor drift) | No (similarity drift, frame drift, text minor drift) |
 | `qwen3_tts` custom voice | Done | Pass | --- | Pass (drift) | No (similarity drift, frame drift, text minor drift) |
 | `qwen3_tts` voice design | Done | Pass | --- | Pass (drift) | No (similarity drift, frame drift, text minor drift) |
-| `seed_vc` | No | --- | --- | --- | --- |
+| `seed_vc` | Done | Pass | --- | Pass (drift) | Pass (drift) |
 | `silero_vad` | Skip (tiny model) | --- | --- | --- | --- |
 | `sortformer_diar` | No | --- | --- | --- | --- |
 | `stable_audio` | Done | Pass | --- | Pass (drift) | Pass (drift) |
 | `supertonic` | Done | Pass | Pass | --- | No (unsupported weight dtype) |
-| `vevo2` | No | --- | --- | --- | --- |
+| `vevo2` | Done | Pass | Pass | Pass (drift) | No (similarity drift, frame drift) |
 | `vibevoice` | No | --- | --- | --- | --- |
 | `vibevoice_asr` | Done | Pass | --- | Pass | Pass |
 | `voxcpm2` | Done | Pass | Pass | No (clone similarity drift, frame drift) | No (similarity drift, frame drift) |
+| `voxtral_realtime` | Done | Pass | --- | Pass | Pass |

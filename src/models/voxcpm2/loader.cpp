@@ -37,6 +37,8 @@ runtime::ModelCliInterface cli(const VoxCPM2Assets &) {
   out.session_options = {
       {"voxcpm2.mem_saver", "true|false",
        "Use tighter graph workspaces and release request runtime graphs; default false."},
+      {"voxcpm2.prompt_cache_slots", "n",
+       "Prompt and prompt-audio embedding cache slots; default 1."},
   };
   return out;
 }
@@ -44,6 +46,20 @@ runtime::ModelCliInterface cli(const VoxCPM2Assets &) {
 class VoxCPM2Loader final : public runtime::IVoiceModelLoader {
 public:
   std::string family() const override { return "voxcpm2"; }
+
+  runtime::CapabilitySet advertised_capabilities() const override {
+    runtime::CapabilitySet out;
+    out.supported_tasks = {
+        {runtime::VoiceTaskKind::Tts,
+         {runtime::RunMode::Offline, runtime::RunMode::Streaming}},
+    };
+    out.supports_speaker_reference = true;
+    return out;
+  }
+
+  std::string advertised_instructions_policy() const override {
+    return "text_prefix";
+  }
 
   bool can_load(const runtime::ModelLoadRequest &request) const override {
     try {
